@@ -26,12 +26,14 @@ export async function geminiGenerateContent(
     temperature?: number;
     maxOutputTokens?: number;
   };
+  const requestedFormat =
+    (requestBody.response_format as Record<string, unknown> | undefined) ?? undefined;
   const body = {
     model,
     input: prompt,
     temperature: gen.temperature ?? 0.35,
     max_output_tokens: gen.maxOutputTokens ?? 2048,
-    response_format: (requestBody.response_format as Record<string, unknown> | undefined) ?? undefined,
+    text: requestedFormat ? { format: requestedFormat } : undefined,
   };
 
   let last: Response | undefined;

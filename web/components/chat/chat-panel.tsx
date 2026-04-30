@@ -92,6 +92,26 @@ function saveHistory(history: ChatMessage[]): void {
   }
 }
 
+async function readErrorMessage(res: Response): Promise<string> {
+  const text = await res.text().catch(() => "");
+  if (!text) return `HTTP ${res.status}`;
+  try {
+    const parsed = JSON.parse(text) as { error?: string; message?: string };
+    return parsed.error || parsed.message || `HTTP ${res.status}`;
+  } catch {
+    const sseMatch = text.match(/data:\s*(\{.*\})/);
+    if (sseMatch?.[1]) {
+      try {
+        const parsed = JSON.parse(sseMatch[1]) as { message?: string };
+        if (parsed.message) return parsed.message;
+      } catch {
+        // ignore parse failure
+      }
+    }
+    return text.slice(0, 300);
+  }
+}
+
 export function ChatPanel({ candidateFirst }: ChatPanelProps) {
   const [history, setHistory] = React.useState<ChatMessage[]>([]);
   const [recent, setRecent] = React.useState<RecentSearch[]>([]);
@@ -283,7 +303,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
         }),
       });
       if (!res.ok || !res.body) {
-        throw new Error(`HTTP ${res.status}`);
+        throw new Error(await readErrorMessage(res));
       }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();

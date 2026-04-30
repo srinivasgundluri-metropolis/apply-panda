@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiUser } from "@/lib/supabase/api";
+import { isUsableJobUrl } from "@/lib/job-url";
 import type { AddToScanResult, LinkedInResult } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -31,12 +32,12 @@ export async function POST(req: NextRequest) {
       new Set(
         body.jobs
           .map((j) => (j.url ?? "").trim())
-          .filter(Boolean),
+          .filter((url) => isUsableJobUrl(url)),
       ),
     );
     if (urls.length === 0) {
       return NextResponse.json(
-        { error: "All jobs are missing URLs; cannot save scan-history rows." },
+        { error: "No valid job URLs found; placeholder links are ignored." },
         { status: 400 },
       );
     }
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
         company: (job.company ?? "").trim(),
         status: "new",
       }))
-      .filter((row) => row.url && !existing.has(row.url));
+      .filter((row) => isUsableJobUrl(row.url) && !existing.has(row.url));
 
     if (toInsert.length > 0) {
       const { error: insertErr } = await auth.supabase

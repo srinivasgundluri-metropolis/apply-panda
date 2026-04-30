@@ -24,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { SseStream } from "@/components/sse-stream";
+import { isUsableJobUrl } from "@/lib/job-url";
 import { formatDate } from "@/lib/utils";
 import type { ScanRow } from "@/lib/types";
 
@@ -172,7 +173,7 @@ export function ScanTable({ rows, portals }: ScanTableProps) {
               </TableRow>
             ) : (
               filtered.map((r) => (
-                <TableRow key={r.url}>
+                <TableRow key={`${r.url || "missing"}:${r.company}:${r.title}`}>
                   <TableCell className="font-medium truncate max-w-xs">
                     {r.company}
                   </TableCell>
@@ -202,19 +203,25 @@ export function ScanTable({ rows, portals }: ScanTableProps) {
                   <TableCell className="text-right">
                     <div className="flex justify-end items-center gap-1">
                       <Button asChild variant="ghost" size="icon">
-                        <a
-                          href={r.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="Open job"
-                        >
-                          <ExternalLink className="size-3.5" />
-                        </a>
+                        {isUsableJobUrl(r.url) ? (
+                          <a
+                            href={r.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Open job"
+                          >
+                            <ExternalLink className="size-3.5" />
+                          </a>
+                        ) : (
+                          <span title="No valid job URL available">
+                            <ExternalLink className="size-3.5 opacity-40" />
+                          </span>
+                        )}
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={pendingEval !== null}
+                        disabled={pendingEval !== null || !isUsableJobUrl(r.url)}
                         onClick={() => startEval(r)}
                       >
                         <Zap className="size-3.5 text-amber-500" />

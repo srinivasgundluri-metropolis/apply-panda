@@ -73,6 +73,7 @@ Rules:
 - Include every job you displayed in the markdown table (one object per row, same order).
 - \`url\`, \`company\`, \`title\` are REQUIRED. \`location\` and \`posted\` are optional.
 - Use bare URLs (no markdown link syntax) inside the JSON.
+- NEVER fabricate or template URLs (no placeholders like \`.../jobs/view/1234567890\`). Only include URLs returned by live tool output.
 - Cap the array at 25 items.
 - Place the block AT THE END of the message, after the markdown table. No prose after it.
 - If the user asks a non-job question or no jobs were found, OMIT the block entirely.

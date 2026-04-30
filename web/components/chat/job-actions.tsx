@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { isUsableJobUrl } from "@/lib/job-url";
 import type {
   AddToScanResult,
   LinkedInResult,
@@ -48,7 +49,12 @@ export function JobActions({ jobs, keyPrefix, onEvaluate }: JobActionsProps) {
   const onSaveAll = async () => {
     setSavingAll(true);
     try {
-      const r = await callAdd(jobs);
+      const validJobs = jobs.filter((j) => isUsableJobUrl(j.url));
+      if (validJobs.length === 0) {
+        toast.error("No valid job URLs to save.");
+        return;
+      }
+      const r = await callAdd(validJobs);
       toast.success(
         `Saved ${r.added} · skipped ${r.skipped_duplicates} duplicate${r.skipped_duplicates === 1 ? "" : "s"}.`,
       );
@@ -62,6 +68,10 @@ export function JobActions({ jobs, keyPrefix, onEvaluate }: JobActionsProps) {
   const onSaveOne = async (i: number) => {
     setSavingIdx(i);
     try {
+      if (!isUsableJobUrl(jobs[i].url)) {
+        toast.error("This row has no valid job URL to save.");
+        return;
+      }
       const r = await callAdd([jobs[i]]);
       if (r.added > 0) {
         toast.success(`Saved: ${jobs[i].company} — ${jobs[i].title}`);
@@ -133,7 +143,7 @@ export function JobActions({ jobs, keyPrefix, onEvaluate }: JobActionsProps) {
                 </p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                {job.url ? (
+                {isUsableJobUrl(job.url) ? (
                   <Button
                     asChild
                     variant="ghost"
@@ -153,7 +163,7 @@ export function JobActions({ jobs, keyPrefix, onEvaluate }: JobActionsProps) {
                   variant="ghost"
                   size="icon"
                   title="Save to scan list"
-                  disabled={savingIdx === i}
+                  disabled={savingIdx === i || !isUsableJobUrl(job.url)}
                   onClick={() => onSaveOne(i)}
                 >
                   {savingIdx === i ? (
@@ -166,6 +176,7 @@ export function JobActions({ jobs, keyPrefix, onEvaluate }: JobActionsProps) {
                   variant="ghost"
                   size="icon"
                   title="Evaluate now"
+                  disabled={!isUsableJobUrl(job.url)}
                   onClick={() => onEvaluate(job)}
                 >
                   <Zap className="size-3.5 text-amber-500" />

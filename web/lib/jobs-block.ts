@@ -6,6 +6,7 @@
  */
 
 import type { LinkedInResult } from "./types";
+import { isUsableJobUrl } from "./job-url";
 
 const JOBS_BLOCK_RE = /```jobs[-_]?json\s*\n([\s\S]*?)\n```/i;
 
@@ -37,7 +38,7 @@ export function extractJobsBlock(content: string): JobsBlockResult {
     const url = String(rec.url ?? "").trim();
     const company = String(rec.company ?? "").trim();
     const title = String(rec.title ?? "").trim();
-    if (!url || !company || !title) continue;
+    if (!isUsableJobUrl(url) || !company || !title) continue;
     jobs.push({
       url,
       company,

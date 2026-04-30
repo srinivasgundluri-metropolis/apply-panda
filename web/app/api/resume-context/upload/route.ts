@@ -1,35 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiUser } from "@/lib/supabase/api";
-import { extractTextFromPdfBuffer } from "@/lib/pdf-resume";
+import {
+  extractTextFromResumeUpload,
+  isSupportedResumeUpload,
+  toResumeMarkdown,
+} from "@/lib/resume-upload";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-function isPdfFile(file: File): boolean {
-  const name = file.name.toLowerCase();
-  return file.type === "application/pdf" || name.endsWith(".pdf");
-}
-
-function hasPdfHeader(buffer: Buffer): boolean {
-  return (
-    buffer.length >= 5 &&
-    buffer[0] === 0x25 &&
-    buffer[1] === 0x50 &&
-    buffer[2] === 0x44 &&
-    buffer[3] === 0x46 &&
-    buffer[4] === 0x2d
-  );
-}
-
-function toResumeMarkdown(extractedText: string, filename: string): string {
-  return [
-    `# Imported Resume (${filename})`,
-    "",
-    "> Auto-generated from uploaded PDF. Review and edit as needed.",
-    "",
-    extractedText.trim(),
-  ].join("\n");
-}
 
 export async function POST(req: NextRequest) {
   const auth = await requireApiUser();
@@ -45,30 +23,37 @@ export async function POST(req: NextRequest) {
     const resumeEntry = formData.get("resume");
     if (!(resumeEntry instanceof File) || resumeEntry.size === 0) {
       return NextResponse.json(
-        { error: "Missing or empty resume PDF (field name: resume)" },
+        { error: "Missing or empty resume file (field name: resume)" },
         { status: 400 },
       );
     }
-    if (!isPdfFile(resumeEntry)) {
+    const name = resumeEntry.name.toLowerCase();
+    if (name.endsWith(".pdf") || resumeEntry.type === "application/pdf") {
       return NextResponse.json(
         {
           error:
-            "Only PDF resumes are supported. Choose a `.pdf` or `application/pdf` file.",
+            "PDF uploads are disabled. Upload `.docx`, `.md`, or `.txt` instead.",
         },
         { status: 400 },
       );
     }
-
-    const arrayBuffer = await resumeEntry.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    if (!hasPdfHeader(buffer)) {
+    if (!isSupportedResumeUpload(resumeEntry)) {
       return NextResponse.json(
-        { error: "Uploaded file is not a valid PDF binary." },
+        { error: "Unsupported file type. Use `.docx`, `.md`, or `.txt`." },
         { status: 400 },
       );
     }
 
-    const extracted = await extractTextFromPdfBuffer(buffer);
+    const extracted = await extractTextFromResumeUpload(resumeEntry);
+    if (!extracted) {
+      return NextResponse.json(
+        {
+          error:
+            "Could not extract text from this file. Re-export as `.docx` or provide markdown text.",
+        },
+        { status: 400 },
+      );
+    }
     const markdown = toResumeMarkdown(extracted, resumeEntry.name);
     const { error } = await auth.supabase.from("resumes").upsert(
       {
@@ -85,7 +70,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       markdown,
       extractedChars: extracted.length,
-      message: "Resume PDF imported and converted to markdown.",
+      message: "Resume file imported and converted to markdown.",
     });
   } catch (e) {
     return NextResponse.json(

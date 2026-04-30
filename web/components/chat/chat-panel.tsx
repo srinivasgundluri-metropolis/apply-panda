@@ -121,7 +121,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
   const [resumeCoachMode, setResumeCoachMode] = React.useState(false);
   const [resumeCoachLoading, setResumeCoachLoading] = React.useState(false);
   const [coachProgressHint, setCoachProgressHint] = React.useState("");
-  const [coachPdfFile, setCoachPdfFile] = React.useState<File | null>(null);
+  const [coachResumeFile, setCoachResumeFile] = React.useState<File | null>(null);
   const [uploadedResumeMarkdown, setUploadedResumeMarkdown] = React.useState("");
   const coachPdfInputRef = React.useRef<HTMLInputElement>(null);
   const [pendingEval, setPendingEval] = React.useState<LinkedInResult | null>(
@@ -165,7 +165,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
 
   React.useEffect(() => {
     if (!resumeCoachMode) {
-      setCoachPdfFile(null);
+      setCoachResumeFile(null);
       setUploadedResumeMarkdown("");
       if (coachPdfInputRef.current) coachPdfInputRef.current.value = "";
     }
@@ -195,15 +195,15 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
       instructionOverride !== undefined
         ? instructionOverride.trim()
         : input.trim();
-    const pdfFile = coachPdfFile;
+    const resumeFile = coachResumeFile;
 
     if (!uploadedResumeMarkdown && !textNote) return;
     if (resumeCoachLoading || streaming) return;
 
     const uploadingPdf = uploadedResumeMarkdown.length > 0;
-    const pdfName = pdfFile?.name ?? "uploaded-resume.pdf";
+    const resumeName = resumeFile?.name ?? "uploaded-resume";
     const userContent = uploadingPdf
-      ? `_Uploaded résumé PDF_: **${pdfName}**${
+      ? `_Uploaded resume file_: **${resumeName}**${
           textNote ? `\n\n${textNote}` : ""
         }`
       : textNote;
@@ -218,7 +218,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     setResumeCoachLoading(true);
     setCoachProgressHint(
       uploadingPdf
-        ? "Extracting résumé PDF & updating canon files…"
+        ? "Applying uploaded resume markdown to canon files…"
         : "Updating cv.md, profile.yml, cover-letter base…",
     );
 
@@ -248,11 +248,11 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
       ]);
       toast.success(
         uploadingPdf
-          ? "Imported résumé PDF into cv.md / profile.yml (and cover-letter base when the model suggests it)."
+          ? "Imported uploaded resume into cv.md / profile.yml (and cover-letter base when the model suggests it)."
           : "cv.md / profile.yml / cover-letter base synced from chat.",
       );
       setInput("");
-      setCoachPdfFile(null);
+      setCoachResumeFile(null);
       setUploadedResumeMarkdown("");
       if (coachPdfInputRef.current) coachPdfInputRef.current.value = "";
     } catch (e) {
@@ -271,10 +271,10 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     }
   };
 
-  const uploadResumePdf = async (file: File) => {
+  const uploadResumeFile = async (file: File) => {
     if (resumeCoachLoading || streaming) return;
     setResumeCoachLoading(true);
-    setCoachProgressHint("Converting PDF to markdown…");
+    setCoachProgressHint("Converting resume file to markdown…");
     try {
       const fd = new FormData();
       fd.append("resume", file);
@@ -287,10 +287,10 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
       const md = (data.markdown ?? "").trim();
       if (!md) throw new Error("Upload succeeded but markdown was empty.");
       setUploadedResumeMarkdown(md);
-      toast.success("PDF converted to markdown. Add notes and click send to apply.");
+      toast.success("Resume file converted to markdown. Add notes and click send to apply.");
     } catch (e) {
-      toast.error(`PDF import failed: ${(e as Error).message}`);
-      setCoachPdfFile(null);
+      toast.error(`Resume import failed: ${(e as Error).message}`);
+      setCoachResumeFile(null);
       setUploadedResumeMarkdown("");
       if (coachPdfInputRef.current) coachPdfInputRef.current.value = "";
     } finally {
@@ -504,7 +504,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                 </p>
                 <p className="text-sm text-muted-foreground max-w-md mt-1">
                   {resumeCoachMode
-                    ? "Describe changes, upload a résumé PDF (cv.md + profile.yml), or both — the coach merges into your workspace using your configured model."
+                    ? "Describe changes, upload a résumé file (`.docx/.md/.txt`) for conversion, or both — the coach merges into your workspace using your configured model."
                     : "Ask the assistant about jobs, your tracker, or your reports. LinkedIn searches return inline 💾 Save and ⚡ Evaluate buttons under each result."}
                 </p>
               </div>
@@ -582,15 +582,15 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               <input
                 ref={coachPdfInputRef}
                 type="file"
-                accept="application/pdf,.pdf"
+                accept=".docx,.md,.txt,text/markdown,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 className="sr-only"
-                aria-label="Upload résumé PDF"
+                aria-label="Upload resume file"
                 disabled={busy}
                 onChange={(e) =>
                   {
                     const file = e.target.files?.[0] ?? null;
-                    setCoachPdfFile(file);
-                    if (file) void uploadResumePdf(file);
+                    setCoachResumeFile(file);
+                    if (file) void uploadResumeFile(file);
                   }
                 }
               />
@@ -603,15 +603,15 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                 onClick={() => coachPdfInputRef.current?.click()}
               >
                 <Upload className="size-3.5 mr-1.5" />
-                Résumé PDF
+                Resume File
               </Button>
-              {coachPdfFile ? (
+              {coachResumeFile ? (
                 <>
                   <span
                     className="text-xs text-muted-foreground truncate max-w-[min(200px,calc(100vw-14rem))]"
-                    title={coachPdfFile.name}
+                    title={coachResumeFile.name}
                   >
-                    {coachPdfFile.name}
+                    {coachResumeFile.name}
                   </span>
                   <Button
                     type="button"
@@ -620,19 +620,19 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                     className="h-7 text-xs shrink-0"
                     disabled={busy}
                     onClick={() => {
-                      setCoachPdfFile(null);
+                      setCoachResumeFile(null);
                       setUploadedResumeMarkdown("");
                       if (coachPdfInputRef.current) {
                         coachPdfInputRef.current.value = "";
                       }
                     }}
                   >
-                    Clear PDF
+                    Clear File
                   </Button>
                 </>
               ) : (
                 <span className="text-[11px] text-muted-foreground">
-                  Upload PDF first (auto-converts to markdown), then click send.
+                  Upload `.docx`, `.md`, or `.txt` first, then click send.
                 </span>
               )}
             </div>
@@ -648,7 +648,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
             <Textarea
               placeholder={
                 resumeCoachMode
-                  ? "e.g. Instructions to merge into your PDF import, or type-only edits (Skills, headline…)"
+                  ? "e.g. Instructions to merge into your uploaded resume import, or type-only edits (Skills, headline…)"
                   : "Ask anything about jobs, your tracker, or LinkedIn…"
               }
               value={input}

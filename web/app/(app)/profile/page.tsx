@@ -1,15 +1,20 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { ProfileResumeEditor } from "@/components/profile/profile-resume-editor";
 import { readProfile } from "@/lib/profile";
-import { readFile, access } from "node:fs/promises";
-import { CV_PATH } from "@/lib/paths";
+import { requireUser } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 async function readCvMd(): Promise<string> {
   try {
-    await access(CV_PATH);
-    return await readFile(CV_PATH, "utf-8");
+    const { supabase, user } = await requireUser();
+    const { data, error } = await supabase
+      .from("resumes")
+      .select("content_md")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (error) throw error;
+    return String(data?.content_md ?? "");
   } catch {
     return "";
   }

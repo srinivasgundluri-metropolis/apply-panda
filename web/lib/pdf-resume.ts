@@ -131,18 +131,29 @@ export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> 
 
   let parser: PdfParser | null = null;
   try {
-    parser = await createPdfParser(buffer);
     let text = "";
+    let primaryError: unknown;
     try {
+      parser = await createPdfParser(buffer);
       const result: { text?: string } = await parser.getText();
       text = (result.text ?? "").replace(/\u0000/g, "").trim();
-    } catch {
-      // Fallback parser path for PDFs rejected by pdf-parse in some runtimes.
+    } catch (e) {
+      // Capture pdf-parse init/extract failures and continue to fallbacks.
+      primaryError = e;
       try {
         text = await extractTextWithPdfJs(buffer);
-      } catch {
+      } catch (pdfJsError) {
         // Last-resort extraction without PDF.js runtime dependencies.
         text = extractTextHeuristicFromPdf(buffer);
+        if (!text) {
+          throw new Error(
+            `Unable to extract PDF text via all parsers. Primary: ${String(
+              primaryError instanceof Error ? primaryError.message : primaryError,
+            )}; PDF.js: ${String(
+              pdfJsError instanceof Error ? pdfJsError.message : pdfJsError,
+            )}`,
+          );
+        }
       }
     }
     if (!text) {

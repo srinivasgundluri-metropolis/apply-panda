@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { readProfile, candidateFirstName } from "@/lib/profile";
 import { requireApiUser } from "@/lib/supabase/api";
 import { buildChatPrompt } from "@/lib/prompts";
+import { sanitizePlaceholderLinkedInUrls } from "@/lib/job-url";
 import {
   runGeminiPromptWithFallback,
   sseFromText,
@@ -63,7 +64,8 @@ export async function POST(req: NextRequest) {
       maxOutputTokens: 1536,
       temperature: 0.3,
     });
-    return sseFromText(text);
+    const safeText = sanitizePlaceholderLinkedInUrls(text);
+    return sseFromText(safeText);
   } catch (e) {
     const msg = (e as Error).message || "Chat failed";
     if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED")) {

@@ -116,6 +116,11 @@ function normalizePdfErrorMessage(error: unknown): Error {
       "PDF fallback parser hit a runtime dependency issue (DOMMatrix). Please retry upload; a heuristic text-extraction fallback is now applied automatically.",
     );
   }
+  if (message.toLowerCase().includes("unsupported unicode escape sequence")) {
+    return new Error(
+      "PDF parser hit an internal escape-sequence issue. A safe text fallback was attempted automatically; if this persists, export the PDF again from the source doc and retry.",
+    );
+  }
   return error instanceof Error ? error : new Error(message);
 }
 
@@ -165,6 +170,15 @@ export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> 
       ? `${text.slice(0, MAX_EXTRACTED_CHARS)}\n\n_[Truncated after ${MAX_EXTRACTED_CHARS} characters]_`
       : text;
   } catch (e) {
+    const msg = String(e instanceof Error ? e.message : e).toLowerCase();
+    if (msg.includes("unsupported unicode escape sequence")) {
+      const fallback = extractTextHeuristicFromPdf(buffer);
+      if (fallback) {
+        return fallback.length > MAX_EXTRACTED_CHARS
+          ? `${fallback.slice(0, MAX_EXTRACTED_CHARS)}\n\n_[Truncated after ${MAX_EXTRACTED_CHARS} characters]_`
+          : fallback;
+      }
+    }
     throw normalizePdfErrorMessage(e);
   } finally {
     if (parser) {

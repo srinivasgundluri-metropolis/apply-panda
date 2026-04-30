@@ -7,6 +7,11 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: resolve(__dirname),
   },
+  // Portal scan reads YAML at runtime; ensure it ships in serverless bundles (Vercel).
+  outputFileTracingIncludes: {
+    "/api/portals/search": ["./data/bundled-portals.yml"],
+    "/api/scan/run": ["./data/bundled-portals.yml"],
+  },
 };
 
 export default nextConfig;

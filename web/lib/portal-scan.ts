@@ -3,10 +3,32 @@
  * Used by hosted portal scan (persist) and chat portal search (read-only).
  */
 
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { REPO_ROOT } from "@/lib/paths";
+
+/** Ship default boards in repo; overrides: root `portals.yml` (local), or `PORTALS_YML` (Vercel). */
+const BUNDLED_PORTALS = join(process.cwd(), "data", "bundled-portals.yml");
+
+async function readPortalsYamlText(): Promise<string> {
+  const fromEnv = process.env.PORTALS_YML?.trim();
+  if (fromEnv) return fromEnv;
+
+  if (existsSync(BUNDLED_PORTALS)) {
+    return readFile(BUNDLED_PORTALS, "utf-8");
+  }
+
+  const repoPortals = join(REPO_ROOT, "portals.yml");
+  if (existsSync(repoPortals)) {
+    return readFile(repoPortals, "utf-8");
+  }
+
+  throw new Error(
+    "Portals configuration missing: ship web/data/bundled-portals.yml, add portals.yml next to career-ops root for local runs, or set PORTALS_YML with the full YAML (e.g. on Vercel).",
+  );
+}
 
 export type PortalJob = {
   title: string;
@@ -108,8 +130,7 @@ export function buildTitleFilter(titleFilter: { positive?: string[]; negative?: 
 }
 
 export async function loadPortalsConfig(): Promise<PortalsYamlConfig> {
-  const portalsPath = join(REPO_ROOT, "portals.yml");
-  const raw = await readFile(portalsPath, "utf-8");
+  const raw = await readPortalsYamlText();
   return parseYaml(raw) as PortalsYamlConfig;
 }
 

@@ -15,6 +15,7 @@ import { extractJobsBlock } from "@/lib/jobs-block";
 import { cn } from "@/lib/utils";
 import type {
   LinkedInResult,
+  PortalSearchResponse,
   RecentSearch,
   SseEvent,
 } from "@/lib/types";
@@ -38,8 +39,8 @@ const RECENT_KEY = "career-ops:recent-searches";
 const HISTORY_KEY = "career-ops:chat-history";
 
 const SUGGESTED_PROMPTS = [
-  "Find biotech roles in Chicago posted this week",
-  "Show me ML engineer jobs at Stanford University",
+  "machine learning platform senior",
+  "backend engineer distributed systems",
   "What's in my scan history under 'AI' last 14 days?",
   "Summarize my last 3 evaluation reports",
 ];
@@ -71,6 +72,49 @@ function saveRecent(searches: RecentSearch[]): void {
   } catch {
     // Quota / private mode: silently ignore.
   }
+}
+
+function escapeTableCell(s: string): string {
+  return s.replace(/\|/g, "·").replace(/\n/g, " ").trim();
+}
+
+function buildPortalSearchReply(data: PortalSearchResponse): {
+  content: string;
+  jobs: LinkedInResult[];
+} {
+  const pos = data.title_filter.positive.length
+    ? data.title_filter.positive.map((x) => `\`${x}\``).join(", ")
+    : "_none (all titles allowed)_";
+  const neg = data.title_filter.negative.length
+    ? data.title_filter.negative.map((x) => `\`${x}\``).join(", ")
+    : "_none_";
+  const kw = data.query.keywords.trim();
+  const lines: string[] = [
+    "**Company portals** (Greenhouse · Ashby · Lever) with `portals.yml` **title_filter**.",
+    "",
+    `**Title rules:** positive ${pos} · negative ${neg}.`,
+    "",
+    kw
+      ? `**Keyword narrow:** _${kw.replace(/_/g, "\\_")}_ — any word (2+ chars) may match title, company, or location.`
+      : `_No keyword narrow — showing up to **${data.query.limit}** roles that pass the title filter._`,
+    "",
+    `**Stats:** ${data.companies_scanned} boards · **${data.stats.title_filtered_total}** roles after title rules · **${data.stats.keyword_matched_total}** after keywords · **${data.stats.returned}** shown below.`,
+  ];
+  const jobs = data.results;
+  if (jobs.length === 0) {
+    return {
+      content:
+        lines.join("\n") +
+        "\n\n_No matches. Try different keywords or edit `title_filter` / tracked companies in `portals.yml`._",
+      jobs: [],
+    };
+  }
+  const header = "| Company | Title | Location | URL |\n| --- | --- | --- | --- |";
+  const rows = jobs.map(
+    (j) =>
+      `| ${escapeTableCell(j.company)} | ${escapeTableCell(j.title)} | ${escapeTableCell(j.location)} | ${j.url} |`,
+  );
+  return { content: `${lines.join("\n")}\n\n${header}\n${rows.join("\n")}`, jobs };
 }
 
 function loadHistory(): ChatMessage[] {
@@ -128,6 +172,8 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     null,
   );
   const [evalKey, setEvalKey] = React.useState(0);
+  const [portalSearchFirst, setPortalSearchFirst] = React.useState(true);
+  const [portalSearching, setPortalSearching] = React.useState(false);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   // Without this guard, the first persist effect ran while `history` was still
   // empty (before hydrate completed), overwriting localStorage — wiping chat.
@@ -198,7 +244,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     const resumeFile = coachResumeFile;
 
     if (!uploadedResumeMarkdown && !textNote) return;
-    if (resumeCoachLoading || streaming) return;
+    if (resumeCoachLoading || streaming || portalSearching) return;
 
     const uploadingPdf = uploadedResumeMarkdown.length > 0;
     const resumeName = resumeFile?.name ?? "uploaded-resume";
@@ -272,7 +318,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
   };
 
   const uploadResumeFile = async (file: File) => {
-    if (resumeCoachLoading || streaming) return;
+    if (resumeCoachLoading || streaming || portalSearching) return;
     setResumeCoachLoading(true);
     setCoachProgressHint("Converting resume file to markdown…");
     try {
@@ -299,9 +345,58 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     }
   };
 
+  const runPortalJobSearch = async (message: string) => {
+    const userMsg: ChatMessage = {
+      role: "user",
+      content: message,
+      id: makeId(),
+    };
+    const assistantId = makeId();
+    setHistory((prev) => [...prev, userMsg]);
+    setInput("");
+    setPortalSearching(true);
+    try {
+      const res = await fetch("/api/portals/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keywords: message, limit: 60 }),
+      });
+      const data = (await res.json()) as PortalSearchResponse & { error?: string };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      const { content, jobs } = buildPortalSearchReply(data);
+      setHistory((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content,
+          jobs: jobs.length > 0 ? jobs : undefined,
+          id: assistantId,
+        },
+      ]);
+      if (jobs.length > 0) trackRecent(message, jobs);
+    } catch (e) {
+      toast.error(`Portal search failed: ${(e as Error).message}`);
+      setHistory((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `_Portal search failed: ${(e as Error).message}_`,
+          id: assistantId,
+        },
+      ]);
+    } finally {
+      setPortalSearching(false);
+    }
+  };
+
   const sendMessage = async (rawText: string) => {
     const message = rawText.trim();
-    if (!message || streaming || resumeCoachLoading) return;
+    if (!message || streaming || resumeCoachLoading || portalSearching) return;
+
+    if (!resumeCoachMode && portalSearchFirst) {
+      await runPortalJobSearch(message);
+      return;
+    }
 
     const userMsg: ChatMessage = {
       role: "user",
@@ -428,7 +523,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     saveRecent([]);
   };
 
-  const busy = streaming || resumeCoachLoading;
+  const busy = streaming || resumeCoachLoading || portalSearching;
   const empty = history.length === 0 && !busy;
 
   const recentUserPrompts = React.useMemo(() => {
@@ -454,9 +549,10 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                 className="max-w-[min(280px,calc(100vw-12rem))] truncate text-xs h-8"
                 title={m.content}
                 disabled={busy}
-                onClick={() =>
-                  resumeCoachMode ? sendResumeCoach(m.content) : sendMessage(m.content)
-                }
+                onClick={() => {
+                  if (resumeCoachMode) void sendResumeCoach(m.content);
+                  else void sendMessage(m.content);
+                }}
               >
                 {m.content.length > 52
                   ? `${m.content.slice(0, 50)}…`
@@ -505,7 +601,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                 <p className="text-sm text-muted-foreground max-w-md mt-1">
                   {resumeCoachMode
                     ? "Describe changes, upload a résumé file (`.docx/.md/.txt`) for conversion, or both — the coach merges into your workspace using your configured model."
-                    : "Ask the assistant about jobs, your tracker, or your reports. LinkedIn searches return inline 💾 Save and ⚡ Evaluate buttons under each result."}
+                    : "With **Search portals** on, your message runs Greenhouse/Ashby/Lever using `portals.yml` title filters, then narrows by keywords — real posting URLs only. Turn it off for tracker/report questions."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 justify-center max-w-2xl mt-2">
@@ -515,9 +611,10 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                     variant="outline"
                     size="sm"
                     disabled={busy}
-                    onClick={() =>
-                      resumeCoachMode ? sendResumeCoach(p) : sendMessage(p)
-                    }
+                    onClick={() => {
+                      if (resumeCoachMode) void sendResumeCoach(p);
+                      else void sendMessage(p);
+                    }}
                     className="text-xs"
                   >
                     {p}
@@ -549,10 +646,10 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               onEvaluate={handleEvaluate}
               live
             />
-          ) : streaming ? (
+          ) : streaming || portalSearching ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              <span>thinking…</span>
+              <span>{portalSearching ? "Searching portals…" : "thinking…"}</span>
             </div>
           ) : null}
         </div>
@@ -573,10 +670,25 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               — update <code className="text-[10px]">cv.md</code>,{" "}
               <code className="text-[10px]">profile.yml</code>,{" "}
               <code className="text-[10px]">cover-letter-base.md</code>{" "}
-              (requires <code className="text-[10px]">OPENAI_API_KEY</code> in environment). Job search LinkedIn scraping uses the{" "}
-              <em>other</em> mode.
+              (requires <code className="text-[10px]">OPENAI_API_KEY</code> in environment). Turn this on <em>instead of</em> job search.
             </span>
           </label>
+          {!resumeCoachMode ? (
+            <label className="flex items-start gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="mt-1 size-4 rounded border-input shrink-0"
+                checked={portalSearchFirst}
+                onChange={(e) => setPortalSearchFirst(e.target.checked)}
+                disabled={busy}
+              />
+              <span className="text-xs text-muted-foreground leading-snug">
+                <span className="font-medium text-foreground">Search portals first</span> —{" "}
+                Greenhouse / Ashby / Lever from <code className="text-[10px]">portals.yml</code>{" "}
+                (title_filter), then optional keyword narrow. Off = plain AI chat (tracker, reports, strategy).
+              </span>
+            </label>
+          ) : null}
           {resumeCoachMode ? (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pb-0.5">
               <input
@@ -640,8 +752,8 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (resumeCoachMode) sendResumeCoach();
-              else sendMessage(input);
+              if (resumeCoachMode) void sendResumeCoach();
+              else void sendMessage(input);
             }}
             className="flex items-end gap-2"
           >
@@ -649,15 +761,17 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               placeholder={
                 resumeCoachMode
                   ? "e.g. Instructions to merge into your uploaded resume import, or type-only edits (Skills, headline…)"
-                  : "Ask anything about jobs, your tracker, or LinkedIn…"
+                  : portalSearchFirst
+                    ? "Keywords to narrow ATS results (e.g. staff engineer ML remote)…"
+                    : "Ask about tracker, reports, negotiation, or paste a JD…"
               }
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  if (resumeCoachMode) sendResumeCoach();
-                  else sendMessage(input);
+                  if (resumeCoachMode) void sendResumeCoach();
+                  else void sendMessage(input);
                 }
               }}
               disabled={busy}

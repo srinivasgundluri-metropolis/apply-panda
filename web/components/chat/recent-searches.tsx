@@ -16,7 +16,7 @@ interface RecentSearchesProps {
 }
 
 /**
- * Last few LinkedIn job-search results that returned a `jobs-json` block —
+ * Last few saved job-search results (portal ATS or assistant jobs-json) —
  * cached so you can re-open or replay without hitting the agent again.
  * Separate from chat transcript persistence (stored under a different localStorage key).
  */
@@ -33,10 +33,10 @@ export function RecentSearches({
         <div>
           <h3 className="text-xs font-medium text-muted-foreground tracking-wide uppercase flex items-center gap-1.5">
             <Clock className="size-3.5" />
-            Recent LinkedIn job searches
+            Recent job searches
           </h3>
           <p className="text-[11px] text-muted-foreground mt-1 pr-12">
-            Up to four saved search results (requires jobs in the agent reply).
+            Up to four saved searches with job rows (portal search or assistant).
             Not the same as your chat transcript.
           </p>
         </div>

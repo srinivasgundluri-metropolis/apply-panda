@@ -23,10 +23,10 @@ export function ScanRunner() {
           <div className="min-w-0 max-w-xl">
             <p className="font-medium">Scan configured portals</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Hits Greenhouse / Ashby / Lever / Workday public APIs for every
-              company in <code className="text-xs">portals.yml</code> with
-              zero LLM cost. New offers are appended to{" "}
-              <code className="text-xs">scan-history.tsv</code> with{" "}
+              Hits Greenhouse / Ashby / Lever public APIs for every company in{" "}
+              <code className="text-xs">portals.yml</code> using your{" "}
+              <code className="text-xs">title_filter</code>. New listings sync to{" "}
+              Scan results (hosted <code className="text-xs">scan_history</code>) with{" "}
               <Badge variant="outline" className="text-[10px] mx-1">
                 added
               </Badge>{" "}

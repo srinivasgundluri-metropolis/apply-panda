@@ -122,6 +122,19 @@ export interface LinkedInResponse {
   results: LinkedInResult[];
 }
 
+/** `POST /api/portals/search` — ATS boards + portals.yml filters. */
+export interface PortalSearchResponse {
+  query: { keywords: string; limit: number };
+  title_filter: { positive: string[]; negative: string[] };
+  companies_scanned: number;
+  stats: {
+    title_filtered_total: number;
+    keyword_matched_total: number;
+    returned: number;
+  };
+  results: LinkedInResult[];
+}
+
 /** Output shape of `node add-to-scan.mjs --from-stdin`. */
 export interface AddToScanResult {
   added: number;

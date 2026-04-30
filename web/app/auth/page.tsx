@@ -18,21 +18,6 @@ export default async function AuthPage({
           <span className="font-semibold tracking-tight">ApplyPanda</span>
         </div>
         <AuthForm blocked={blocked} />
-        <p className="text-center text-xs text-muted-foreground">
-          By using ApplyPanda, you agree to our{" "}
-          <a href="/terms" className="underline">
-            Terms
-          </a>{" "}
-          and{" "}
-          <a href="/privacy" className="underline">
-            Privacy Policy
-          </a>
-          {" "}and{" "}
-          <a href="/attribution" className="underline">
-            Attribution
-          </a>
-          .
-        </p>
       </div>
     </div>
   );

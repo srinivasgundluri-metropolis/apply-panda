@@ -16,7 +16,7 @@ const PROTECTED_PREFIXES = [
   "/profile",
 ];
 
-const PUBLIC_API_PREFIXES = ["/api/outreach/config"];
+const PUBLIC_API_PREFIXES = ["/api/outreach/config", "/api/auth/allowlist"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

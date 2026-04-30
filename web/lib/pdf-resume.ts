@@ -1,6 +1,7 @@
 /**
  * Résumé PDF text extraction for the dashboard coach flow (server-only).
  */
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 /** Hard cap aligned with typical one–two page résumés. */
 export const MAX_RESUME_PDF_BYTES = 5 * 1024 * 1024;
@@ -16,7 +17,6 @@ type PdfParser = {
 type PdfJsTextContent = { items: unknown[] };
 type PdfJsPage = { getTextContent: () => Promise<PdfJsTextContent> };
 type PdfJsDocument = { numPages: number; getPage: (n: number) => Promise<PdfJsPage> };
-type PdfJsLoadingTask = { promise: Promise<PdfJsDocument>; destroy: () => Promise<void> | void };
 
 async function createPdfParser(buffer: Buffer): Promise<PdfParser> {
   const data = new Uint8Array(buffer);
@@ -27,18 +27,8 @@ async function createPdfParser(buffer: Buffer): Promise<PdfParser> {
 }
 
 async function extractTextWithPdfJs(buffer: Buffer): Promise<string> {
-  const mod = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const direct = (mod as { getDocument?: (args: { data: Uint8Array }) => PdfJsLoadingTask })
-    .getDocument;
-  const fromDefault = (
-    mod as { default?: { getDocument?: (args: { data: Uint8Array }) => PdfJsLoadingTask } }
-  ).default?.getDocument;
-  const getDocument = direct || fromDefault;
-  if (!getDocument) {
-    throw new Error("PDF.js loader is unavailable in this runtime.");
-  }
   const loadingTask = getDocument({ data: new Uint8Array(buffer) });
-  const pdf = await loadingTask.promise;
+  const pdf = (await loadingTask.promise) as PdfJsDocument;
   const pages: string[] = [];
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);

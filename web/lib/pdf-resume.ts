@@ -28,11 +28,12 @@ async function createPdfParser(buffer: Buffer): Promise<PdfParser> {
 
 async function extractTextWithPdfJs(buffer: Buffer): Promise<string> {
   const mod = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const getDocument =
-    (mod as { getDocument?: (args: { data: Uint8Array }) => PdfJsLoadingTask })
-      .getDocument ??
-    (mod as { default?: { getDocument?: (args: { data: Uint8Array }) => PdfJsLoadingTask } })
-      .default?.getDocument;
+  const direct = (mod as { getDocument?: (args: { data: Uint8Array }) => PdfJsLoadingTask })
+    .getDocument;
+  const fromDefault = (
+    mod as { default?: { getDocument?: (args: { data: Uint8Array }) => PdfJsLoadingTask } }
+  ).default?.getDocument;
+  const getDocument = direct || fromDefault;
   if (!getDocument) {
     throw new Error("PDF.js loader is unavailable in this runtime.");
   }

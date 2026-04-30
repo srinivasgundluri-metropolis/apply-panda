@@ -1,0 +1,14 @@
+ApplyPanda includes and adapts work from:
+
+- Project: career-ops
+- Upstream URL: https://github.com/santifer/career-ops
+- Original author: Santiago Fernández de Valderrama
+- Upstream license: MIT (see LICENSE)
+
+Compliance notes:
+
+1. This repository preserves the MIT license text and copyright notice.
+2. Derivative modifications and hosted dashboard changes were added in this project.
+3. Commercial and private use are permitted under MIT, provided the license notice
+   is included in copies or substantial portions of the software.
+

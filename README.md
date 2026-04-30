@@ -317,6 +317,12 @@ Got hired using career-ops? [Share your story!](https://github.com/santifer/care
 
 MIT
 
+## Third-Party Attribution
+
+This project includes and adapts work from
+[`santifer/career-ops`](https://github.com/santifer/career-ops), licensed under
+MIT. See [`NOTICE`](NOTICE) for attribution details.
+
 ## Let's Connect
 
 [![Website](https://img.shields.io/badge/santifer.io-000?style=for-the-badge&logo=safari&logoColor=white)](https://santifer.io)

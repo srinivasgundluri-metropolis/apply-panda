@@ -3,7 +3,7 @@ import { readProfile, candidateFirstName } from "@/lib/profile";
 import { requireApiUser } from "@/lib/supabase/api";
 import { buildChatPrompt } from "@/lib/prompts";
 import {
-  runGeminiPromptWithConfig,
+  runGeminiPromptWithFallback,
   sseFromText,
   sseError,
 } from "@/lib/gemini-runtime";
@@ -52,8 +52,10 @@ export async function POST(req: NextRequest) {
   const profile = await readProfile();
   const first = candidateFirstName(profile);
   const prompt = buildChatPrompt(message, body.history ?? [], first);
+  const primaryModel =
+    body.model?.trim() || process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
   try {
-    const text = await runGeminiPromptWithConfig(prompt, body.model, {
+    const text = await runGeminiPromptWithFallback(prompt, primaryModel, {
       // Keep chat lighter to avoid hitting Gemini TPM limits.
       maxOutputTokens: 1536,
       temperature: 0.3,

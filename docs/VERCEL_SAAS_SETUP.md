@@ -17,6 +17,8 @@ Set these in Vercel Project Settings -> Environment Variables:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY` (server-only; required for permanent account deletion flow)
 - `GEMINI_API_KEY`
+- `GEMINI_MODEL` (optional; defaults to `gemini-2.0-flash`)
+- `GEMINI_FALLBACK_MODELS` (optional comma-separated fallback list for 429/503 mitigation)
 - `APPLYPANDA_ALLOWED_EMAILS` (comma-separated allowlist for access control)
 - `APPLYPANDA_LOCKDOWN` (optional, set `true` to force global 503 maintenance mode)
 - `SMTP_HOST` (optional)

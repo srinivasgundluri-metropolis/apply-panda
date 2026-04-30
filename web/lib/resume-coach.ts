@@ -11,7 +11,7 @@ import type { Profile } from "./types";
 const MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini";
 const COACH_JSON_SCHEMA = `{
   "cv_md": string | null,
-  "profile_updates": object | null,
+  "profile_updates": string | null, // JSON string containing top-level profile patch object
   "cover_letter_base_md": string | null,
   "chat_reply_md": string
 }`;
@@ -138,7 +138,7 @@ ${coverRaw.slice(0, 12000)}
 
 Rules:
 - \`cv_md\`: full replacement markdown or null.
-- \`profile_updates\`: deep-merge patch (top-level profile keys) or null.
+- \`profile_updates\`: JSON-stringified deep-merge patch (top-level profile keys) or null.
 - \`cover_letter_base_md\`: full markdown or null.
 - \`chat_reply_md\`: concise markdown summary.
 - Do not invent achievements/metrics.
@@ -158,7 +158,7 @@ ${COACH_JSON_SCHEMA}`;
           additionalProperties: false,
           properties: {
             cv_md: { type: ["string", "null"] },
-            profile_updates: { type: ["object", "null"] },
+            profile_updates: { type: ["string", "null"] },
             cover_letter_base_md: { type: ["string", "null"] },
             chat_reply_md: { type: "string" },
           },
@@ -201,7 +201,17 @@ ${COACH_JSON_SCHEMA}`;
     updated.cv = true;
   }
 
-  const patch = sanitizeProfilePatch(parsed.profile_updates);
+  const rawProfileUpdates =
+    typeof parsed.profile_updates === "string"
+      ? (() => {
+          try {
+            return JSON.parse(parsed.profile_updates) as unknown;
+          } catch {
+            return null;
+          }
+        })()
+      : parsed.profile_updates;
+  const patch = sanitizeProfilePatch(rawProfileUpdates);
   if (patch) {
     await writeProfile(patch as Profile);
     updated.profile = true;

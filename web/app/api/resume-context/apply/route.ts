@@ -10,6 +10,7 @@ import { candidateSlug } from "@/lib/slugify";
 import { requireApiUser } from "@/lib/supabase/api";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 function isPdfFile(file: File): boolean {
   const name = file.name.toLowerCase();

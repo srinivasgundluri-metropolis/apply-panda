@@ -22,7 +22,18 @@ export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> 
 
   const parser = new PDFParse({ data: new Uint8Array(buffer) });
   try {
-    const result = await parser.getText();
+    let result: { text?: string };
+    try {
+      result = await parser.getText();
+    } catch (e) {
+      const message = (e as Error).message || "PDF parsing failed.";
+      if (message.includes("did not match the expected pattern")) {
+        throw new Error(
+          "PDF parser failed in this runtime. Please export the PDF again (text PDF) or paste resume text directly.",
+        );
+      }
+      throw e;
+    }
     const text = (result.text ?? "").replace(/\u0000/g, "").trim();
     if (!text) {
       throw new Error(

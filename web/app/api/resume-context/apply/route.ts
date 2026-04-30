@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   applyResumeCoachInstruction,
-  buildInstructionFromUploadedResumeExtract,
+  buildInstructionFromUploadedResumeMarkdown,
 } from "@/lib/resume-coach";
-import { extractTextFromPdfBuffer } from "@/lib/pdf-resume";
 import { readApplications } from "@/lib/parse-applications";
 import { candidateFullName, readProfile } from "@/lib/profile";
 import { candidateSlug } from "@/lib/slugify";
@@ -11,23 +10,6 @@ import { requireApiUser } from "@/lib/supabase/api";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-function isPdfFile(file: File): boolean {
-  const name = file.name.toLowerCase();
-  return file.type === "application/pdf" || name.endsWith(".pdf");
-}
-
-function hasPdfHeader(buffer: Buffer): boolean {
-  // PDF files start with "%PDF-"
-  return (
-    buffer.length >= 5 &&
-    buffer[0] === 0x25 &&
-    buffer[1] === 0x50 &&
-    buffer[2] === 0x44 &&
-    buffer[3] === 0x46 &&
-    buffer[4] === 0x2d
-  );
-}
 
 async function jsonResponseAfterApply(instruction: string): Promise<NextResponse> {
   const result = await applyResumeCoachInstruction(instruction);
@@ -76,82 +58,34 @@ async function jsonResponseAfterApply(instruction: string): Promise<NextResponse
 /**
  * Applies résumé / profile / cover-letter-base edits via the coach pipeline.
  *
- * - **application/json**: `{ instruction: string }`
- * - **multipart/form-data**: fields `resume` (PDF file) and optional `instruction` (notes)
+ * - **application/json**:
+ *   `{ instruction?: string, uploadedResumeMarkdown?: string }`
  */
 export async function POST(req: NextRequest) {
   const auth = await requireApiUser();
   if (auth.response) return auth.response;
-  const contentType = req.headers.get("content-type") ?? "";
 
   try {
-    if (contentType.includes("multipart/form-data")) {
-      const formData = await req.formData();
-      const resumeEntry = formData.get("resume");
-      if (!(resumeEntry instanceof File) || resumeEntry.size === 0) {
-        return NextResponse.json(
-          { error: "Missing or empty resume PDF (field name: resume)" },
-          { status: 400 },
-        );
-      }
-      if (!isPdfFile(resumeEntry)) {
-        return NextResponse.json(
-          {
-            error:
-              "Only PDF résumés are supported. Choose a `.pdf` or `application/pdf` file.",
-          },
-          { status: 400 },
-        );
-      }
-
-      const arrayBuffer = await resumeEntry.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      if (!hasPdfHeader(buffer)) {
-        return NextResponse.json(
-          { error: "Uploaded file is not a valid PDF binary." },
-          { status: 400 },
-        );
-      }
-
-      let extracted: string;
-      try {
-        extracted = await extractTextFromPdfBuffer(buffer);
-      } catch (e) {
-        return NextResponse.json(
-          { error: (e as Error).message ?? "PDF parsing failed" },
-          { status: 400 },
-        );
-      }
-
-      const note = String(formData.get("instruction") ?? "").trim();
-      const instruction = buildInstructionFromUploadedResumeExtract(
-        extracted,
-        note || undefined,
-      );
-
-      try {
-        return await jsonResponseAfterApply(instruction);
-      } catch (e) {
-        return NextResponse.json(
-          { error: (e as Error).message ?? "Apply failed" },
-          { status: 500 },
-        );
-      }
-    }
-
-    let body: { instruction?: string };
+    let body: { instruction?: string; uploadedResumeMarkdown?: string };
     try {
       body = await req.json();
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
-    const instruction = (body.instruction ?? "").trim();
-    if (!instruction) {
+    const instructionText = (body.instruction ?? "").trim();
+    const uploadedResumeMarkdown = (body.uploadedResumeMarkdown ?? "").trim();
+    if (!instructionText && !uploadedResumeMarkdown) {
       return NextResponse.json(
-        { error: "instruction is required" },
+        { error: "instruction or uploadedResumeMarkdown is required" },
         { status: 400 },
       );
     }
+    const instruction = uploadedResumeMarkdown
+      ? buildInstructionFromUploadedResumeMarkdown(
+          uploadedResumeMarkdown,
+          instructionText || undefined,
+        )
+      : instructionText;
 
     try {
       return await jsonResponseAfterApply(instruction);

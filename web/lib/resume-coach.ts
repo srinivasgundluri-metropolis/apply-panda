@@ -73,6 +73,22 @@ Your job:
 ${notes ? `Additional instructions from the user:\n---\n${notes}\n---\n\n` : ""}Extracted résumé text:\n---\n${clipped}\n---`;
 }
 
+export function buildInstructionFromUploadedResumeMarkdown(
+  resumeMarkdown: string,
+  userNotes?: string,
+): string {
+  const clipped = resumeMarkdown.slice(0, 80_000);
+  const notes = (userNotes ?? "").trim();
+  return `The user uploaded a résumé PDF that has already been converted to markdown. Treat this markdown as the primary source of truth.
+
+Your job:
+1. Produce a **full replacement** Markdown body for canonical resume markdown.
+2. Populate \`profile_updates\` when inferable from resume markdown and existing profile.
+3. Only change \`cover_letter_base_md\` when user notes request cover-letter preference updates.
+
+${notes ? `Additional instructions from the user:\n---\n${notes}\n---\n\n` : ""}Uploaded resume markdown:\n---\n${clipped}\n---`;
+}
+
 export async function applyResumeCoachInstruction(
   instruction: string,
 ): Promise<CoachApplyResult> {

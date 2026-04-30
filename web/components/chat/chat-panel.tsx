@@ -122,6 +122,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
   const [resumeCoachLoading, setResumeCoachLoading] = React.useState(false);
   const [coachProgressHint, setCoachProgressHint] = React.useState("");
   const [coachPdfFile, setCoachPdfFile] = React.useState<File | null>(null);
+  const [uploadedResumeMarkdown, setUploadedResumeMarkdown] = React.useState("");
   const coachPdfInputRef = React.useRef<HTMLInputElement>(null);
   const [pendingEval, setPendingEval] = React.useState<LinkedInResult | null>(
     null,
@@ -165,6 +166,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
   React.useEffect(() => {
     if (!resumeCoachMode) {
       setCoachPdfFile(null);
+      setUploadedResumeMarkdown("");
       if (coachPdfInputRef.current) coachPdfInputRef.current.value = "";
     }
   }, [resumeCoachMode]);
@@ -195,12 +197,13 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
         : input.trim();
     const pdfFile = coachPdfFile;
 
-    if (!pdfFile && !textNote) return;
+    if (!uploadedResumeMarkdown && !textNote) return;
     if (resumeCoachLoading || streaming) return;
 
-    const uploadingPdf = pdfFile !== null;
+    const uploadingPdf = uploadedResumeMarkdown.length > 0;
+    const pdfName = pdfFile?.name ?? "uploaded-resume.pdf";
     const userContent = uploadingPdf
-      ? `_Uploaded résumé PDF_: **${pdfFile.name}**${
+      ? `_Uploaded résumé PDF_: **${pdfName}**${
           textNote ? `\n\n${textNote}` : ""
         }`
       : textNote;
@@ -220,22 +223,14 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     );
 
     try {
-      let res: Response;
-      if (pdfFile) {
-        const fd = new FormData();
-        fd.append("resume", pdfFile);
-        if (textNote) fd.append("instruction", textNote);
-        res = await fetch("/api/resume-context/apply", {
-          method: "POST",
-          body: fd,
-        });
-      } else {
-        res = await fetch("/api/resume-context/apply", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ instruction: textNote }),
-        });
-      }
+      const res = await fetch("/api/resume-context/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instruction: textNote || undefined,
+          uploadedResumeMarkdown: uploadedResumeMarkdown || undefined,
+        }),
+      });
       const data = (await res.json()) as {
         ok?: boolean;
         message?: string;
@@ -258,6 +253,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
       );
       setInput("");
       setCoachPdfFile(null);
+      setUploadedResumeMarkdown("");
       if (coachPdfInputRef.current) coachPdfInputRef.current.value = "";
     } catch (e) {
       toast.error(`Coach failed: ${(e as Error).message}`);
@@ -269,6 +265,34 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
           id: assistantId,
         },
       ]);
+    } finally {
+      setResumeCoachLoading(false);
+      setCoachProgressHint("");
+    }
+  };
+
+  const uploadResumePdf = async (file: File) => {
+    if (resumeCoachLoading || streaming) return;
+    setResumeCoachLoading(true);
+    setCoachProgressHint("Converting PDF to markdown…");
+    try {
+      const fd = new FormData();
+      fd.append("resume", file);
+      const res = await fetch("/api/resume-context/upload", {
+        method: "POST",
+        body: fd,
+      });
+      const data = (await res.json()) as { markdown?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      const md = (data.markdown ?? "").trim();
+      if (!md) throw new Error("Upload succeeded but markdown was empty.");
+      setUploadedResumeMarkdown(md);
+      toast.success("PDF converted to markdown. Add notes and click send to apply.");
+    } catch (e) {
+      toast.error(`PDF import failed: ${(e as Error).message}`);
+      setCoachPdfFile(null);
+      setUploadedResumeMarkdown("");
+      if (coachPdfInputRef.current) coachPdfInputRef.current.value = "";
     } finally {
       setResumeCoachLoading(false);
       setCoachProgressHint("");
@@ -563,7 +587,11 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                 aria-label="Upload résumé PDF"
                 disabled={busy}
                 onChange={(e) =>
-                  setCoachPdfFile(e.target.files?.[0] ?? null)
+                  {
+                    const file = e.target.files?.[0] ?? null;
+                    setCoachPdfFile(file);
+                    if (file) void uploadResumePdf(file);
+                  }
                 }
               />
               <Button
@@ -593,6 +621,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                     disabled={busy}
                     onClick={() => {
                       setCoachPdfFile(null);
+                      setUploadedResumeMarkdown("");
                       if (coachPdfInputRef.current) {
                         coachPdfInputRef.current.value = "";
                       }
@@ -603,7 +632,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                 </>
               ) : (
                 <span className="text-[11px] text-muted-foreground">
-                  Optional PDF → rebuilds cv.md + profile.yml
+                  Upload PDF first (auto-converts to markdown), then click send.
                 </span>
               )}
             </div>
@@ -639,7 +668,9 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               type="submit"
               disabled={
                 busy ||
-                (resumeCoachMode ? !coachPdfFile && !input.trim() : !input.trim())
+                (resumeCoachMode
+                  ? !uploadedResumeMarkdown && !input.trim()
+                  : !input.trim())
               }
               size="lg"
               className="self-stretch"

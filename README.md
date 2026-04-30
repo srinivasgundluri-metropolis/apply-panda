@@ -1,5 +1,9 @@
 # ApplyPanda
 
+<p align="center">
+  <img src="web/public/logo/f6e75545-5238-4561-8e59-d39e0c9d0efe.jpeg" alt="ApplyPanda logo" width="96" />
+</p>
+
 ApplyPanda is a web product layer built on top of the open-source
 [`santifer/career-ops`](https://github.com/santifer/career-ops) project.
 

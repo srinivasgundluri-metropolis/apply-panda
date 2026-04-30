@@ -2,13 +2,57 @@
  * Résumé PDF text extraction for the dashboard coach flow (server-only).
  */
 
-import { PDFParse } from "pdf-parse";
-
 /** Hard cap aligned with typical one–two page résumés. */
 export const MAX_RESUME_PDF_BYTES = 5 * 1024 * 1024;
 
 /** Characters passed into the coach model after extraction (model also gets existing cv/profile). */
 const MAX_EXTRACTED_CHARS = 60_000;
+
+type PdfParser = {
+  getText: () => Promise<{ text?: string }>;
+  destroy: () => Promise<void> | void;
+};
+
+async function createPdfParser(buffer: Buffer): Promise<PdfParser> {
+  const data = new Uint8Array(buffer);
+  const mod = (await import("pdf-parse")) as {
+    PDFParse: new (args: { data: Uint8Array }) => PdfParser;
+  };
+  return new mod.PDFParse({ data });
+}
+
+async function extractTextWithPdfJs(buffer: Buffer): Promise<string> {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) });
+  const pdf = await loadingTask.promise;
+  const pages: string[] = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const line = content.items
+      .map((it: unknown) =>
+        typeof it === "object" && it !== null && "str" in it
+          ? String((it as { str?: unknown }).str ?? "")
+          : "",
+      )
+      .join(" ")
+      .trim();
+    if (line) pages.push(line);
+  }
+  await loadingTask.destroy();
+  return pages.join("\n\n").trim();
+}
+
+function normalizePdfErrorMessage(error: unknown): Error {
+  const message =
+    error instanceof Error ? error.message : String(error ?? "PDF parsing failed.");
+  if (message.toLowerCase().includes("did not match the expected pattern")) {
+    return new Error(
+      "PDF parser failed in this runtime. Please export the PDF again as a text PDF (not print/image PDF), or paste resume text directly.",
+    );
+  }
+  return error instanceof Error ? error : new Error(message);
+}
 
 export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> {
   if (buffer.length > MAX_RESUME_PDF_BYTES) {
@@ -20,21 +64,17 @@ export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> 
     throw new Error("Empty PDF file.");
   }
 
-  const parser = new PDFParse({ data: new Uint8Array(buffer) });
+  let parser: PdfParser | null = null;
   try {
-    let result: { text?: string };
+    parser = await createPdfParser(buffer);
+    let text = "";
     try {
-      result = await parser.getText();
-    } catch (e) {
-      const message = (e as Error).message || "PDF parsing failed.";
-      if (message.includes("did not match the expected pattern")) {
-        throw new Error(
-          "PDF parser failed in this runtime. Please export the PDF again (text PDF) or paste resume text directly.",
-        );
-      }
-      throw e;
+      const result: { text?: string } = await parser.getText();
+      text = (result.text ?? "").replace(/\u0000/g, "").trim();
+    } catch {
+      // Fallback parser path for PDFs rejected by pdf-parse in some runtimes.
+      text = await extractTextWithPdfJs(buffer);
     }
-    const text = (result.text ?? "").replace(/\u0000/g, "").trim();
     if (!text) {
       throw new Error(
         "Could not extract text from this PDF. It may be image-only — try exporting as text PDF or OCR first.",
@@ -43,7 +83,15 @@ export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> 
     return text.length > MAX_EXTRACTED_CHARS
       ? `${text.slice(0, MAX_EXTRACTED_CHARS)}\n\n_[Truncated after ${MAX_EXTRACTED_CHARS} characters]_`
       : text;
+  } catch (e) {
+    throw normalizePdfErrorMessage(e);
   } finally {
-    await parser.destroy();
+    if (parser) {
+      try {
+        await parser.destroy();
+      } catch {
+        // Ignore teardown failures so they do not mask root-cause parse errors.
+      }
+    }
   }
 }

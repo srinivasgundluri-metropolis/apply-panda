@@ -1,11 +1,19 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { getSupabaseEnv } from "./env";
+import { isEmailAllowed } from "@/lib/auth-allowlist";
 
 export class UnauthorizedError extends Error {
   constructor(message = "Unauthorized") {
     super(message);
     this.name = "UnauthorizedError";
+  }
+}
+
+export class ForbiddenError extends Error {
+  constructor(message = "Forbidden") {
+    super(message);
+    this.name = "ForbiddenError";
   }
 }
 
@@ -39,6 +47,9 @@ export async function requireUser() {
     error,
   } = await supabase.auth.getUser();
   if (error || !user) throw new UnauthorizedError();
+  if (!isEmailAllowed(user.email)) {
+    throw new ForbiddenError("Access is restricted for this account.");
+  }
   return { supabase, user };
 }
 

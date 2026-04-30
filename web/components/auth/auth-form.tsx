@@ -13,7 +13,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type Mode = "signin" | "signup";
 
-export function AuthForm() {
+export function AuthForm({ blocked = false }: { blocked?: boolean }) {
   const router = useRouter();
   const [mode, setMode] = React.useState<Mode>("signin");
   const [email, setEmail] = React.useState("");
@@ -35,6 +35,21 @@ export function AuthForm() {
     setError(null);
     setNotice(null);
     try {
+      const allowRes = await fetch("/api/auth/allowlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const allowJson = await allowRes.json().catch(() => ({}));
+      if (!allowRes.ok) {
+        throw new Error(allowJson.error ?? "Could not verify email access.");
+      }
+      if (!allowJson.allowed) {
+        throw new Error(
+          "Access is currently limited to approved email addresses only.",
+        );
+      }
+
       const supabase = createSupabaseBrowserClient();
       if (mode === "signup") {
         const { error: signErr } = await supabase.auth.signUp({
@@ -77,6 +92,12 @@ export function AuthForm() {
         <CardDescription>Sign in to access your private workspace.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {blocked ? (
+          <p className="text-sm text-destructive">
+            Access is currently restricted for this account. Contact support if
+            you believe this is a mistake.
+          </p>
+        ) : null}
         <Tabs
           value={mode}
           onValueChange={(v) => setMode(v as Mode)}

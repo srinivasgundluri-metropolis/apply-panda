@@ -3,7 +3,13 @@ import { LogoMark } from "@/components/branding/logo-mark";
 
 export const dynamic = "force-dynamic";
 
-export default function AuthPage() {
+export default async function AuthPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ blocked?: string }>;
+}) {
+  const params = (await searchParams) ?? {};
+  const blocked = params.blocked === "1";
   return (
     <div className="min-h-screen w-full grid place-items-center px-4">
       <div className="w-full max-w-md space-y-4">
@@ -11,7 +17,7 @@ export default function AuthPage() {
           <LogoMark />
           <span className="font-semibold tracking-tight">ApplyPanda</span>
         </div>
-        <AuthForm />
+        <AuthForm blocked={blocked} />
         <p className="text-center text-xs text-muted-foreground">
           By using ApplyPanda, you agree to our{" "}
           <a href="/terms" className="underline">

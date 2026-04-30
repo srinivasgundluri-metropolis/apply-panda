@@ -17,6 +17,7 @@ Set these in Vercel Project Settings -> Environment Variables:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY` (server-only; required for permanent account deletion flow)
 - `GEMINI_API_KEY`
+- `APPLYPANDA_ALLOWED_EMAILS` (comma-separated allowlist for access control)
 - `APPLYPANDA_LOCKDOWN` (optional, set `true` to force global 503 maintenance mode)
 - `SMTP_HOST` (optional)
 - `SMTP_PORT` (optional, default 587)

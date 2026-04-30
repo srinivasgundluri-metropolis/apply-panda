@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { updateAuthSession } from "@/lib/supabase/middleware";
+import { isEmailAllowed } from "@/lib/auth-allowlist";
 
 /** Must match bundled default favicon path so browsers get the JPEG content. */
 const LOGO_SEGMENT = "/logo/f6e75545-5238-4561-8e59-d39e0c9d0efe.jpeg";
@@ -65,18 +66,23 @@ export async function middleware(request: NextRequest) {
   const isProtectedPage = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
   const isApi = pathname.startsWith("/api/");
   const isPublicApi = PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p));
+  const allowed = user ? isEmailAllowed(user.email) : true;
 
-  if (!user && (isProtectedPage || (isApi && !isPublicApi))) {
+  if ((!user || !allowed) && (isProtectedPage || (isApi && !isPublicApi))) {
     if (isApi) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: user ? "Access restricted" : "Unauthorized" },
+        { status: user ? 403 : 401 },
+      );
     }
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/auth";
     loginUrl.searchParams.set("next", pathname);
+    if (user && !allowed) loginUrl.searchParams.set("blocked", "1");
     return NextResponse.redirect(loginUrl);
   }
 
-  if (user && pathname === "/auth") {
+  if (user && pathname === "/auth" && allowed) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);

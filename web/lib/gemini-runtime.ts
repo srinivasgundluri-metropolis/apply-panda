@@ -11,13 +11,26 @@ function parseGeminiText(data: {
 }
 
 export async function runGeminiPrompt(prompt: string, model = "gemini-2.0-flash") {
+  return runGeminiPromptWithConfig(prompt, model, {
+    temperature: 0.35,
+    maxOutputTokens: 8192,
+  });
+}
+
+export async function runGeminiPromptWithConfig(
+  prompt: string,
+  model = "gemini-2.0-flash",
+  config: { temperature?: number; maxOutputTokens?: number } = {},
+) {
   const apiKey = await resolveGeminiApiKey();
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not set in environment.");
   }
+  const temperature = config.temperature ?? 0.35;
+  const maxOutputTokens = config.maxOutputTokens ?? 8192;
   const res = await geminiGenerateContent(model, apiKey, {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.35, maxOutputTokens: 8192 },
+    generationConfig: { temperature, maxOutputTokens },
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");

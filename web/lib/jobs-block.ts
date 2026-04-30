@@ -1,7 +1,7 @@
 /**
  * Extract the `jobs-json` sidecar block the chat agent emits alongside any
  * LinkedIn results table. Mirrors the Python `_extract_jobs_block` helper
- * in streamlit_app.py — both UIs detect the same block format so the agent
+ * in `dashboard/` — both UIs detect the same block format so the agent
  * prompt only needs one specification.
  */
 

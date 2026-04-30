@@ -1,23 +1,11 @@
 import Link from "next/link";
-import {
-  ArrowRight,
-  Bot,
-  BarChart3,
-  FileText,
-  Search,
-  Sparkles,
-  Target,
-  Zap,
-} from "lucide-react";
+import { ArrowRight, Bot, BarChart3, FileText, Search, Target, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
-import { readApplications } from "@/lib/parse-applications";
-import { readScanHistory } from "@/lib/scan-history";
-import { listReports } from "@/lib/parse-reports";
-import { readProfile, candidateFirstName, candidateFullName } from "@/lib/profile";
-import { candidateSlug } from "@/lib/slugify";
+import { LogoMark } from "@/components/branding/logo-mark";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const FEATURES = [
   {
@@ -52,41 +40,40 @@ const FEATURES = [
   },
   {
     icon: Zap,
-    title: "Streamlit + React",
+    title: "Repo-native workflow",
     description:
-      "The Python Streamlit dashboard and this Next.js app share the exact same backend (.mjs scripts, modes, templates). Use whichever surface fits your workflow.",
+      "All state lives in markdown and YAML under your repo. This app invokes the same `.mjs` scripts, modes, and templates as the rest of the stack — one source of truth on disk.",
   },
 ];
 
 export default async function LandingPage() {
-  // Surface a few live KPIs so the landing isn't dead chrome — pulled at
-  // request time so visiting the landing always reflects today's data.
-  const profile = await readProfile();
-  const slug = candidateSlug(candidateFullName(profile));
-  const [apps, scan, reports] = await Promise.all([
-    readApplications(slug),
-    readScanHistory(),
-    listReports(),
-  ]);
-  const first = candidateFirstName(profile);
+  const hasSession = await (async () => {
+    try {
+      const supabase = await createSupabaseServerClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      return Boolean(user);
+    } catch {
+      return false;
+    }
+  })();
 
   return (
     <div className="flex flex-col min-h-screen">
       <header className="flex items-center justify-between px-8 py-5 border-b">
         <div className="flex items-center gap-2">
-          <div className="size-8 rounded-md bg-primary text-primary-foreground flex items-center justify-center">
-            <Sparkles className="size-4" />
-          </div>
-          <span className="font-semibold tracking-tight">Career-Ops</span>
+          <LogoMark />
+          <span className="font-semibold tracking-tight">ApplyPanda</span>
           <Badge variant="outline" className="ml-2 text-[10px]">
-            local-first · v1
+            free for everyone · beta
           </Badge>
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
           <Button asChild>
-            <Link href="/dashboard">
-              Open Dashboard
+            <Link href={hasSession ? "/dashboard" : "/auth"}>
+              {hasSession ? "Open Dashboard" : "Get Started Free"}
               <ArrowRight className="size-4" />
             </Link>
           </Button>
@@ -95,60 +82,57 @@ export default async function LandingPage() {
 
       <section className="flex flex-col items-center text-center px-8 py-20 sm:py-28 gap-6 border-b">
         <Badge variant="secondary" className="rounded-full px-3">
-          AI-powered job search command center
+          AI-powered job search command center · free for everyone
         </Badge>
         <h1 className="max-w-4xl text-4xl sm:text-6xl font-semibold tracking-tight leading-tight">
-          {first ? `Welcome back, ${first}.` : "Find better roles, faster."}
+          Find better roles, faster.
           <br />
           <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-fuchsia-500">
             Then beat the resume tax.
           </span>
         </h1>
         <p className="max-w-2xl text-lg text-muted-foreground">
-          Career-Ops scans portals, scores offers against your CV, generates
-          tailored applications, and tracks every step — so you spend your
-          time on the conversations that matter, not the spreadsheet.
+          ApplyPanda helps you scan portals, score offers against your CV,
+          generate tailored applications, and track every step — so you spend
+          your time on the conversations that matter, not the spreadsheet. No
+          subscription required.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3 mt-2">
           <Button asChild size="lg">
-            <Link href="/dashboard">
-              Open Dashboard
+            <Link href={hasSession ? "/dashboard" : "/auth"}>
+              {hasSession ? "Open Dashboard" : "Create Free Account"}
               <ArrowRight className="size-4" />
             </Link>
           </Button>
           <Button variant="outline" asChild size="lg">
-            <Link href="/chat">Try the AI assistant</Link>
+            <Link href={hasSession ? "/chat" : "/auth"}>
+              {hasSession ? "Try the AI assistant" : "Sign in"}
+            </Link>
           </Button>
         </div>
 
         <div className="grid grid-cols-3 gap-4 mt-12 max-w-3xl w-full">
           <Card>
             <CardContent className="flex flex-col items-center py-6 px-4">
-              <span className="text-3xl font-semibold tabular-nums">
-                {apps.length}
-              </span>
+              <span className="text-3xl font-semibold tabular-nums">Auth</span>
               <span className="text-xs text-muted-foreground mt-1">
-                Tracked applications
+                Secure account workspace
               </span>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="flex flex-col items-center py-6 px-4">
-              <span className="text-3xl font-semibold tabular-nums">
-                {scan.length}
-              </span>
+              <span className="text-3xl font-semibold tabular-nums">AI</span>
               <span className="text-xs text-muted-foreground mt-1">
-                Jobs in scan history
+                AI-powered workflows
               </span>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="flex flex-col items-center py-6 px-4">
-              <span className="text-3xl font-semibold tabular-nums">
-                {reports.length}
-              </span>
+              <span className="text-3xl font-semibold tabular-nums">RLS</span>
               <span className="text-xs text-muted-foreground mt-1">
-                Evaluations on file
+                Per-user isolated data
               </span>
             </CardContent>
           </Card>
@@ -163,8 +147,7 @@ export default async function LandingPage() {
           <p className="text-muted-foreground mb-10 max-w-2xl">
             Six surfaces, one cohesive workflow. Every action — chat, evaluate,
             tailor, scan — writes back to the same canonical files
-            (`applications.md`, `scan-history.tsv`, `reports/*.md`). Switch
-            between the React UI and the Streamlit dashboard freely.
+            (`applications.md`, `scan-history.tsv`, `reports/*.md`) on disk.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {FEATURES.map(({ icon: Icon, title, description }) => (
@@ -191,18 +174,20 @@ export default async function LandingPage() {
           </h2>
           <p className="text-muted-foreground mb-6">
             Open the dashboard, paste a job URL into Pipeline, or just talk to
-            the assistant. Everything lives on your machine — no cloud, no
-            telemetry, your CV stays yours.
+            the assistant. ApplyPanda is free for everyone and runs as a hosted
+            web app with private user workspaces.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <Button asChild size="lg">
-              <Link href="/dashboard">
-                Open Dashboard
+              <Link href={hasSession ? "/dashboard" : "/auth"}>
+                {hasSession ? "Open Dashboard" : "Start Free"}
                 <ArrowRight className="size-4" />
               </Link>
             </Button>
             <Button asChild size="lg" variant="outline">
-              <Link href="/profile">Set up profile</Link>
+              <Link href={hasSession ? "/profile" : "/auth"}>
+                {hasSession ? "Set up profile" : "Sign in"}
+              </Link>
             </Button>
           </div>
         </div>
@@ -210,11 +195,18 @@ export default async function LandingPage() {
 
       <footer className="px-8 py-6 border-t flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-muted-foreground">
         <span>
-          Career-Ops · runs locally · powered by Cursor Agent + Next.js +
-          Streamlit
+          ApplyPanda · free for everyone · powered by AI + Next.js
         </span>
-        <span>
-          {apps.length} apps · {reports.length} reports · {scan.length} scanned
+        <span className="flex items-center gap-2">
+          <Link href="/terms" className="underline">
+            Terms
+          </Link>
+          <span>·</span>
+          <Link href="/privacy" className="underline">
+            Privacy
+          </Link>
+          <span>·</span>
+          <span>Hosted on Vercel · Auth + Supabase</span>
         </span>
       </footer>
     </div>

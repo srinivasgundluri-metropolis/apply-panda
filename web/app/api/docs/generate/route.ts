@@ -1,35 +1,27 @@
 import { NextRequest } from "next/server";
-import { streamProcess, SSE_HEADERS } from "@/lib/shell";
+import { sseError, sseFromText, runGeminiPrompt } from "@/lib/gemini-runtime";
 
 function sseSingleError(message: string): Response {
-  return new Response(`data: ${JSON.stringify({ type: "error", message })}\n\n`, {
-    status: 200,
-    headers: SSE_HEADERS,
-  });
+  return sseError(message, 200);
 }
 import { buildCvPrompt, buildCoverLetterPrompt } from "@/lib/prompts";
-import { REPO_ROOT } from "@/lib/paths";
 import { readCoverLetterVoiceExcerpt } from "@/lib/resume-coach";
+import { requireApiUser } from "@/lib/supabase/api";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Streams cursor-agent running the `pdf` mode for tailored CV / cover
- * letter generation. The agent reads the evaluation report (if any) so
- * it can lift JD keywords and the detected archetype into the document.
+ * Streams Gemini-based draft output for tailored CV / cover letter generation.
  *
  * Body shape:
  *   { kind: "cv" | "cl" | "both", company, role, reportRel?: string,
  *     regenerate?: boolean, canonicalStatus?: string, model? }
- *
- * When `regenerate` is true, prompts tell the agent to replace prior tailored
- * PDFs and re-read `cv.md` + profile. Forbidden when `canonicalStatus`
- * is `Applied` (returns SSE error frame).
- *
- * For `kind: "both"`, one agent run generates **ATS + full-length CV PDFs**
- * (see `buildCvPrompt`) and the cover letter PDF.
  */
 export async function POST(req: NextRequest) {
+  const auth = await requireApiUser();
+  if (auth.response) {
+    return sseError("Unauthorized", 401);
+  }
   let body: {
     kind?: "cv" | "cl" | "both";
     company?: string;
@@ -42,22 +34,13 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json();
   } catch {
-    return new Response(
-      `data: ${JSON.stringify({ type: "error", message: "Invalid JSON" })}\n\n`,
-      { status: 400, headers: SSE_HEADERS },
-    );
+    return sseError("Invalid JSON", 400);
   }
   const company = (body.company ?? "").trim();
   const role = (body.role ?? "").trim();
   const kind = body.kind;
   if (!company || !role || !kind) {
-    return new Response(
-      `data: ${JSON.stringify({
-        type: "error",
-        message: "company, role, and kind are required",
-      })}\n\n`,
-      { status: 400, headers: SSE_HEADERS },
-    );
+    return sseError("company, role, and kind are required", 400);
   }
 
   const regenerate = Boolean(body.regenerate);
@@ -91,10 +74,10 @@ export async function POST(req: NextRequest) {
         "Print DONE lines as specified in each prompt section.";
   }
 
-  const args = ["-p", "--force", "--trust", "--workspace", REPO_ROOT];
-  if (body.model) args.push("--model", body.model);
-  args.push(prompt);
-
-  const stream = streamProcess("cursor-agent", args);
-  return new Response(stream, { headers: SSE_HEADERS });
+  try {
+    const text = await runGeminiPrompt(prompt, body.model);
+    return sseFromText(text);
+  } catch (e) {
+    return sseError((e as Error).message || "Document generation failed", 500);
+  }
 }

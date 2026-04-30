@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -16,6 +17,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Tabs,
   TabsContent,
@@ -41,6 +51,9 @@ interface Props {
 export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
   const router = useRouter();
   const [saving, setSaving] = React.useState(false);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [deleteAck, setDeleteAck] = React.useState("");
+  const [deleteBusy, setDeleteBusy] = React.useState(false);
 
   const [fullName, setFullName] = React.useState(
     initial.candidate?.full_name ?? "",
@@ -103,6 +116,25 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
       .split(/[,\n]/)
       .map((p) => p.trim())
       .filter(Boolean);
+
+  const deleteAccount = async () => {
+    if (deleteAck.trim().toUpperCase() !== "DELETE") {
+      toast.error("Type DELETE to confirm account deletion.");
+      return;
+    }
+    setDeleteBusy(true);
+    try {
+      const res = await fetch("/api/account/delete", { method: "POST" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+      toast.success("Account deleted. All associated data has been removed.");
+      window.location.href = "/auth";
+    } catch (err) {
+      toast.error(`Delete failed: ${(err as Error).message}`);
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
 
   const saveAll = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -344,6 +376,84 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
           Update profile & résumé
         </Button>
       </div>
+
+      <Card className="border-destructive/30">
+        <CardHeader>
+          <CardTitle className="text-destructive">Danger zone</CardTitle>
+          <CardDescription>
+            Permanently delete your account and all corresponding data, including
+            profile, resume, applications, reports, documents, and scan history.
+            This action cannot be undone.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-muted-foreground">
+            Before deleting, review our{" "}
+            <Link href="/terms" className="underline">
+              Terms
+            </Link>{" "}
+            and{" "}
+            <Link href="/privacy" className="underline">
+              Privacy Policy
+            </Link>
+            .
+          </p>
+          <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+            <DialogTrigger asChild>
+              <Button type="button" variant="destructive">
+                Delete account
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete account permanently?</DialogTitle>
+                <DialogDescription>
+                  Deleting your account will permanently delete all data
+                  corresponding to your user: profile, resume, applications,
+                  reports, generated documents, and scan history.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2">
+                <Label htmlFor="delete-confirm">
+                  Type <code>DELETE</code> to confirm
+                </Label>
+                <Input
+                  id="delete-confirm"
+                  value={deleteAck}
+                  onChange={(e) => setDeleteAck(e.target.value)}
+                  placeholder="DELETE"
+                  disabled={deleteBusy}
+                />
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setDeleteOpen(false)}
+                  disabled={deleteBusy}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={deleteAccount}
+                  disabled={deleteBusy || deleteAck.trim().toUpperCase() !== "DELETE"}
+                >
+                  {deleteBusy ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Deleting…
+                    </>
+                  ) : (
+                    "Yes, delete my account"
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </CardContent>
+      </Card>
     </form>
   );
 }

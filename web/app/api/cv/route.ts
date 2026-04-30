@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile, writeFile, copyFile, access } from "node:fs/promises";
-import { dirname } from "node:path";
-import { mkdir } from "node:fs/promises";
-import { CV_PATH } from "@/lib/paths";
+import { requireApiUser } from "@/lib/supabase/api";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const auth = await requireApiUser();
+  if (auth.response) return auth.response;
   try {
-    await access(CV_PATH);
-  } catch {
-    return NextResponse.json({ markdown: "", exists: false });
-  }
-  try {
-    const markdown = await readFile(CV_PATH, "utf-8");
+    const { data, error } = await auth.supabase
+      .from("resumes")
+      .select("content_md")
+      .eq("user_id", auth.user.id)
+      .maybeSingle();
+    if (error) throw error;
+    const markdown = (data?.content_md ?? "").trim();
     return NextResponse.json({ markdown, exists: true });
   } catch (e) {
     return NextResponse.json(
@@ -25,6 +25,8 @@ export async function GET() {
 
 /** Write `cv.md` — backups `cv.md.bak` once on first overwrite. */
 export async function PUT(req: NextRequest) {
+  const auth = await requireApiUser();
+  if (auth.response) return auth.response;
   let body: { markdown?: string };
   try {
     body = await req.json();
@@ -33,14 +35,18 @@ export async function PUT(req: NextRequest) {
   }
   const md = typeof body.markdown === "string" ? body.markdown : "";
   try {
-    await mkdir(dirname(CV_PATH), { recursive: true });
-    try {
-      await access(CV_PATH);
-      await copyFile(CV_PATH, `${CV_PATH}.bak`);
-    } catch {
-      /* no prior file — nothing to backup */
-    }
-    await writeFile(CV_PATH, md, "utf-8");
+    const { error } = await auth.supabase
+      .from("resumes")
+      .upsert(
+        {
+          user_id: auth.user.id,
+          content_md: md,
+          updated_at: new Date().toISOString(),
+          source: "editor",
+        },
+        { onConflict: "user_id" },
+      );
+    if (error) throw error;
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json(

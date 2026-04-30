@@ -1,39 +1,16 @@
 /**
  * Hiring-manager outreach: Gemini draft generation + optional SMTP send.
- * API keys: GEMINI_API_KEY (process.env or repo-root .env). SMTP: SMTP_* env vars.
+ * API keys: GEMINI_API_KEY (process.env only). SMTP: SMTP_* env vars.
  */
 
-import { readFile } from "node:fs/promises";
 import nodemailer from "nodemailer";
 import { geminiGenerateContent, formatGeminiHttpError } from "./gemini-generate";
-import { ENV_PATH } from "./paths";
 
 const GEMINI_MODEL = "gemini-2.0-flash";
 
 export async function resolveGeminiApiKey(): Promise<string | undefined> {
   const fromEnv = process.env.GEMINI_API_KEY?.trim();
   if (fromEnv) return fromEnv;
-  try {
-    const raw = await readFile(ENV_PATH, "utf-8");
-    for (const line of raw.split(/\n/)) {
-      const t = line.trim();
-      if (!t || t.startsWith("#")) continue;
-      const i = t.indexOf("=");
-      if (i === -1) continue;
-      const key = t.slice(0, i).trim();
-      if (key !== "GEMINI_API_KEY") continue;
-      let v = t.slice(i + 1).trim();
-      if (
-        (v.startsWith('"') && v.endsWith('"')) ||
-        (v.startsWith("'") && v.endsWith("'"))
-      ) {
-        v = v.slice(1, -1);
-      }
-      return v || undefined;
-    }
-  } catch {
-    /* missing .env */
-  }
   return undefined;
 }
 

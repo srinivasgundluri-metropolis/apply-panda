@@ -1,5 +1,4 @@
-import { readdir, stat, access, readFile } from "node:fs/promises";
-import { join, relative, basename } from "node:path";
+import { basename } from "node:path";
 import { Download, FileText, Mail, Folder } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
@@ -12,9 +11,9 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Markdown } from "@/components/chat/markdown";
-import { OUTPUT_DIR, COVER_LETTERS_DIR, REPO_ROOT, CV_PATH } from "@/lib/paths";
 import { formatDate } from "@/lib/utils";
 import { apiFileHref } from "@/lib/file-serving";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -23,42 +22,7 @@ interface OutputFile {
   relPath: string;
   size: number;
   mtime: number;
-}
-
-async function exists(p: string): Promise<boolean> {
-  return access(p).then(
-    () => true,
-    () => false,
-  );
-}
-
-async function listPdfs(dir: string): Promise<OutputFile[]> {
-  if (!(await exists(dir))) return [];
-  let entries: string[];
-  try {
-    entries = await readdir(dir);
-  } catch {
-    return [];
-  }
-  const out: OutputFile[] = [];
-  for (const name of entries) {
-    if (!name.endsWith(".pdf")) continue;
-    const path = join(dir, name);
-    try {
-      const s = await stat(path);
-      if (!s.isFile()) continue;
-      out.push({
-        name,
-        relPath: relative(REPO_ROOT, path),
-        size: s.size,
-        mtime: s.mtimeMs,
-      });
-    } catch {
-      // skip
-    }
-  }
-  out.sort((a, b) => b.mtime - a.mtime);
-  return out;
+  kind?: string;
 }
 
 function formatBytes(b: number): string {
@@ -68,13 +32,38 @@ function formatBytes(b: number): string {
 }
 
 export default async function DocumentsPage() {
-  const [cvs, cls] = await Promise.all([
-    listPdfs(OUTPUT_DIR),
-    listPdfs(COVER_LETTERS_DIR),
-  ]);
-  const cvMd = (await exists(CV_PATH))
-    ? await readFile(CV_PATH, "utf-8")
-    : "";
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let cvs: OutputFile[] = [];
+  let cls: OutputFile[] = [];
+  let cvMd = "";
+  if (user) {
+    const [{ data: docs }, { data: resume }] = await Promise.all([
+      supabase
+        .from("documents")
+        .select("name,storage_path,size,mtime,kind")
+        .eq("user_id", user.id)
+        .order("mtime", { ascending: false }),
+      supabase
+        .from("resumes")
+        .select("content_md")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]);
+    cvMd = String(resume?.content_md ?? "");
+    const all = (docs ?? []).map((d: Record<string, unknown>) => ({
+      name: String(d.name ?? ""),
+      relPath: String(d.storage_path ?? ""),
+      size: Number(d.size ?? 0),
+      mtime: Number(d.mtime ?? 0),
+      kind: String(d.kind ?? "other"),
+    }));
+    cvs = all.filter((f) => f.kind === "cv");
+    cls = all.filter((f) => f.kind === "cl");
+  }
 
   return (
     <>
@@ -117,8 +106,8 @@ export default async function DocumentsPage() {
                   <Markdown content={cvMd} />
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    No <code>cv.md</code> in the repo root. Add one at{" "}
-                    <code>{CV_PATH}</code> and refresh.
+                    No canonical resume found yet. Upload/edit your resume in the
+                    profile coach and refresh.
                   </p>
                 )}
               </CardContent>

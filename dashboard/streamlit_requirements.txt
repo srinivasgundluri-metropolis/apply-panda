@@ -1,5 +1,0 @@
-streamlit
-pandas
-pyyaml
-beautifulsoup4
-requests

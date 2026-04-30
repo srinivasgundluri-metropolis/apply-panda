@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { patchApplicationRow } from "@/lib/parse-applications";
 import { CANONICAL_STATES } from "@/lib/types";
+import { requireApiUser } from "@/lib/supabase/api";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,8 @@ export async function PATCH(
   req: NextRequest,
   context: { params: Promise<{ num: string }> },
 ) {
+  const auth = await requireApiUser();
+  if (auth.response) return auth.response;
   // Next 16: dynamic route params are a Promise.
   const { num } = await context.params;
   let body: unknown;

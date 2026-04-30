@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateScanStatus } from "@/lib/scan-history";
+import { requireApiUser } from "@/lib/supabase/api";
 
 export const dynamic = "force-dynamic";
 
 export async function PATCH(req: NextRequest) {
+  const auth = await requireApiUser();
+  if (auth.response) return auth.response;
   let body: { url?: string; status?: string };
   try {
     body = await req.json();

@@ -2,32 +2,6 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireApiUser } from "@/lib/supabase/api";
 
-async function deleteStorageObjects(
-  supabase: {
-    from: (table: string) => {
-      select: (columns: string) => {
-        eq: (
-          column: string,
-          value: string,
-        ) => Promise<{ data: Array<Record<string, unknown>> | null }>;
-      };
-    };
-    storage: { from: (bucket: string) => { remove: (paths: string[]) => Promise<unknown> } };
-  },
-  userId: string,
-) {
-  const { data: docs } = await supabase
-    .from("documents")
-    .select("storage_path")
-    .eq("user_id", userId);
-  const paths = (docs ?? [])
-    .map((d: Record<string, unknown>) => String(d.storage_path ?? ""))
-    .filter(Boolean);
-  if (paths.length > 0) {
-    await supabase.storage.from("documents").remove(paths);
-  }
-}
-
 export async function POST() {
   const auth = await requireApiUser();
   if (auth.response) return auth.response;
@@ -43,7 +17,16 @@ export async function POST() {
   }
 
   try {
-    await deleteStorageObjects(supabase, user.id);
+    const { data: docs } = await supabase
+      .from("documents")
+      .select("storage_path")
+      .eq("user_id", user.id);
+    const paths = (docs ?? [])
+      .map((d: Record<string, unknown>) => String(d.storage_path ?? ""))
+      .filter(Boolean);
+    if (paths.length > 0) {
+      await supabase.storage.from("documents").remove(paths);
+    }
 
     const tables = [
       "documents",

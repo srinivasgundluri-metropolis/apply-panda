@@ -27,6 +27,10 @@ export default async function AuthPage({
           <a href="/privacy" className="underline">
             Privacy Policy
           </a>
+          {" "}and{" "}
+          <a href="/attribution" className="underline">
+            Attribution
+          </a>
           .
         </p>
       </div>

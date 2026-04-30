@@ -206,6 +206,10 @@ export default async function LandingPage() {
             Privacy
           </Link>
           <span>·</span>
+          <Link href="/attribution" className="underline">
+            Attribution
+          </Link>
+          <span>·</span>
           <span>Hosted on Vercel · Auth + Supabase</span>
         </span>
       </footer>

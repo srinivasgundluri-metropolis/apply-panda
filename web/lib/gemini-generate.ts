@@ -28,12 +28,27 @@ export async function geminiGenerateContent(
   };
   const requestedFormat =
     (requestBody.response_format as Record<string, unknown> | undefined) ?? undefined;
+  const responseTextFormat = (() => {
+    if (!requestedFormat) return undefined;
+    const type = requestedFormat.type;
+    if (type === "json_schema") {
+      const nested = requestedFormat.json_schema as
+        | { name?: unknown; schema?: unknown }
+        | undefined;
+      const name = String(nested?.name ?? "").trim();
+      const schema = nested?.schema;
+      if (name && schema && typeof schema === "object") {
+        return { type: "json_schema", name, schema };
+      }
+    }
+    return requestedFormat;
+  })();
   const body = {
     model,
     input: prompt,
     temperature: gen.temperature ?? 0.35,
     max_output_tokens: gen.maxOutputTokens ?? 2048,
-    text: requestedFormat ? { format: requestedFormat } : undefined,
+    text: responseTextFormat ? { format: responseTextFormat } : undefined,
   };
 
   let last: Response | undefined;

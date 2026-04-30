@@ -16,6 +16,18 @@ function isPdfFile(file: File): boolean {
   return file.type === "application/pdf" || name.endsWith(".pdf");
 }
 
+function hasPdfHeader(buffer: Buffer): boolean {
+  // PDF files start with "%PDF-"
+  return (
+    buffer.length >= 5 &&
+    buffer[0] === 0x25 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x44 &&
+    buffer[3] === 0x46 &&
+    buffer[4] === 0x2d
+  );
+}
+
 async function jsonResponseAfterApply(instruction: string): Promise<NextResponse> {
   const result = await applyResumeCoachInstruction(instruction);
   const profile = await readProfile();
@@ -93,6 +105,12 @@ export async function POST(req: NextRequest) {
 
       const arrayBuffer = await resumeEntry.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
+      if (!hasPdfHeader(buffer)) {
+        return NextResponse.json(
+          { error: "Uploaded file is not a valid PDF binary." },
+          { status: 400 },
+        );
+      }
 
       let extracted: string;
       try {

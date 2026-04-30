@@ -25,7 +25,16 @@ function parseCoachJson(raw: string): Record<string, unknown> {
   let t = raw.trim();
   const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fence) t = fence[1].trim();
-  return JSON.parse(t) as Record<string, unknown>;
+  try {
+    return JSON.parse(t) as Record<string, unknown>;
+  } catch {
+    const start = t.indexOf("{");
+    const end = t.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      return JSON.parse(t.slice(start, end + 1)) as Record<string, unknown>;
+    }
+    throw new Error("Model response was not valid JSON.");
+  }
 }
 
 const PROFILE_KEYS = new Set([
@@ -124,6 +133,23 @@ ${COACH_JSON_SCHEMA}`;
   const res = await geminiGenerateContent(MODEL, key, {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: { temperature: 0.35, maxOutputTokens: 8192 },
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "resume_coach_result",
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            cv_md: { type: ["string", "null"] },
+            profile_updates: { type: ["object", "null"] },
+            cover_letter_base_md: { type: ["string", "null"] },
+            chat_reply_md: { type: "string" },
+          },
+          required: ["cv_md", "profile_updates", "cover_letter_base_md", "chat_reply_md"],
+        },
+      },
+    },
   });
   if (!res.ok) {
     const t = await res.text();

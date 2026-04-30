@@ -1,14 +1,16 @@
 /**
- * Hiring-manager outreach: Gemini draft generation + optional SMTP send.
- * API keys: GEMINI_API_KEY (process.env only). SMTP: SMTP_* env vars.
+ * Hiring-manager outreach: LLM draft generation + optional SMTP send.
+ * API keys: OPENAI_API_KEY (preferred), GEMINI_API_KEY (legacy fallback).
  */
 
 import nodemailer from "nodemailer";
 import { geminiGenerateContent, formatGeminiHttpError } from "./gemini-generate";
 
-const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini";
 
 export async function resolveGeminiApiKey(): Promise<string | undefined> {
+  const openAi = process.env.OPENAI_API_KEY?.trim();
+  if (openAi) return openAi;
   const fromEnv = process.env.GEMINI_API_KEY?.trim();
   if (fromEnv) return fromEnv;
   return undefined;
@@ -55,7 +57,7 @@ export async function generateOutreachViaGemini(
   if (data.error?.message) throw new Error(data.error.message);
   const text =
     data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
-  if (!text.trim()) throw new Error("Gemini returned empty text");
+  if (!text.trim()) throw new Error("LLM returned empty text");
   return parseEmailJson(text);
 }
 

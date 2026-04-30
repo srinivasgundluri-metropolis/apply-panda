@@ -1,6 +1,6 @@
 # ApplyPanda Vercel SaaS Setup
 
-This document describes production setup for hosted ApplyPanda (Vercel + Supabase + Gemini).
+This document describes production setup for hosted ApplyPanda (Vercel + Supabase + OpenAI/Codex-compatible API).
 
 ## 1) Supabase
 
@@ -16,9 +16,9 @@ Set these in Vercel Project Settings -> Environment Variables:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY` (server-only; required for permanent account deletion flow)
-- `GEMINI_API_KEY`
-- `GEMINI_MODEL` (optional; defaults to `gemini-2.0-flash`)
-- `GEMINI_FALLBACK_MODELS` (optional comma-separated fallback list for 429/503 mitigation)
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL` (optional; defaults to `gpt-4.1-mini`)
+- `OPENAI_FALLBACK_MODELS` (optional comma-separated fallback list for 429/503 mitigation)
 - `APPLYPANDA_ALLOWED_EMAILS` (comma-separated allowlist for access control)
 - `APPLYPANDA_LOCKDOWN` (optional, set `true` to force global 503 maintenance mode)
 - `SMTP_HOST` (optional)
@@ -40,8 +40,8 @@ Set these in Vercel Project Settings -> Environment Variables:
 - `/auth` loads and allows sign-up/sign-in.
 - Unauthenticated request to `/dashboard` redirects to `/auth`.
 - Authenticated user can load tracker/chat/profile pages.
-- Chat route (`/api/chat/stream`) returns Gemini output.
-- Resume coach route (`/api/resume-context/apply`) works with `GEMINI_API_KEY`.
+- Chat route (`/api/chat/stream`) returns model output.
+- Resume coach route (`/api/resume-context/apply`) works with `OPENAI_API_KEY`.
 - Applications/profile/reports/scan APIs return only authenticated user data.
 
 ## 5) Security notes

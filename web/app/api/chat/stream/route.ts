@@ -13,7 +13,7 @@ const CHAT_COOLDOWN_MS = 5000;
 const cooldownByUser = new Map<string, number>();
 
 /**
- * Streams Gemini output for assistant chat via SSE.
+ * Streams LLM output for assistant chat via SSE.
  *
  * Body shape:
  *   { message: string, history: [{role, content}, ...], model?: string }
@@ -53,10 +53,13 @@ export async function POST(req: NextRequest) {
   const first = candidateFirstName(profile);
   const prompt = buildChatPrompt(message, body.history ?? [], first);
   const primaryModel =
-    body.model?.trim() || process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
+    body.model?.trim() ||
+    process.env.OPENAI_MODEL?.trim() ||
+    process.env.GEMINI_MODEL?.trim() ||
+    "gpt-4.1-mini";
   try {
     const text = await runGeminiPromptWithFallback(prompt, primaryModel, {
-      // Keep chat lighter to avoid hitting Gemini TPM limits.
+      // Keep chat lighter to avoid hitting provider TPM limits.
       maxOutputTokens: 1536,
       temperature: 0.3,
     });
@@ -65,7 +68,7 @@ export async function POST(req: NextRequest) {
     const msg = (e as Error).message || "Chat failed";
     if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED")) {
       return sseError(
-        "Gemini is rate-limiting requests right now. Please wait ~15s and retry one message at a time.",
+        "Model is rate-limiting requests right now. Please wait ~15s and retry one message at a time.",
         429,
       );
     }

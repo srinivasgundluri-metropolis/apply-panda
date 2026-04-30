@@ -480,7 +480,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                 </p>
                 <p className="text-sm text-muted-foreground max-w-md mt-1">
                   {resumeCoachMode
-                    ? "Describe changes, upload a résumé PDF (cv.md + profile.yml), or both — the coach merges into your workspace using Gemini."
+                    ? "Describe changes, upload a résumé PDF (cv.md + profile.yml), or both — the coach merges into your workspace using your configured model."
                     : "Ask the assistant about jobs, your tracker, or your reports. LinkedIn searches return inline 💾 Save and ⚡ Evaluate buttons under each result."}
                 </p>
               </div>
@@ -549,7 +549,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               — update <code className="text-[10px]">cv.md</code>,{" "}
               <code className="text-[10px]">profile.yml</code>,{" "}
               <code className="text-[10px]">cover-letter-base.md</code>{" "}
-              (requires <code className="text-[10px]">GEMINI_API_KEY</code> in environment). Job search LinkedIn scraping uses the{" "}
+              (requires <code className="text-[10px]">OPENAI_API_KEY</code> in environment). Job search LinkedIn scraping uses the{" "}
               <em>other</em> mode.
             </span>
           </label>

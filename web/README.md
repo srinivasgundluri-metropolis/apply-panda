@@ -7,7 +7,7 @@ Customer-facing hosted app for AI-assisted job search workflows.
 - Next.js App Router
 - Supabase Auth + Postgres (RLS)
 - Supabase Storage (`documents` bucket)
-- Gemini (`GEMINI_API_KEY`) for AI chat/evaluation/document generation
+- OpenAI/Codex-compatible API (`OPENAI_API_KEY`) for AI chat/evaluation/document generation
 
 ## Local development
 
@@ -23,9 +23,9 @@ Create a local `.env.local` with:
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
-GEMINI_API_KEY=...
-GEMINI_MODEL=gemini-2.0-flash
-GEMINI_FALLBACK_MODELS="gemini-1.5-flash,gemini-2.0-flash-lite"
+OPENAI_API_KEY=...
+OPENAI_MODEL=gpt-4.1-mini
+OPENAI_FALLBACK_MODELS="gpt-4.1-mini"
 APPLYPANDA_ALLOWED_EMAILS="user1@example.com,user2@example.com,user3@example.com,user4@example.com"
 ```
 
@@ -58,10 +58,10 @@ All tables are user-scoped with Supabase RLS.
 
 ## Route overview
 
-- `POST /api/chat/stream` -> Gemini SSE chat
-- `POST /api/eval/stream` -> Gemini SSE evaluation output
-- `POST /api/docs/generate` -> Gemini SSE CV/CL generation output
-- `POST /api/resume-context/apply` -> Gemini profile/resume coach
+- `POST /api/chat/stream` -> LLM SSE chat
+- `POST /api/eval/stream` -> LLM SSE evaluation output
+- `POST /api/docs/generate` -> LLM SSE CV/CL generation output
+- `POST /api/resume-context/apply` -> LLM profile/resume coach
 - `GET/PUT /api/profile` -> `profiles`
 - `GET/PUT /api/cv` -> `resumes`
 - `GET/PATCH /api/applications*` -> `applications`

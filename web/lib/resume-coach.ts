@@ -1,5 +1,5 @@
 /**
- * Gemini-powered updates to canonical resume/profile data in Supabase.
+ * LLM-powered updates to canonical resume/profile data in Supabase.
  */
 
 import { geminiGenerateContent, formatGeminiHttpError } from "./gemini-generate";
@@ -8,7 +8,7 @@ import { resolveGeminiApiKey } from "./outreach-mail";
 import { createSupabaseServerClient } from "./supabase/server";
 import type { Profile } from "./types";
 
-const MODEL = "gemini-2.0-flash";
+const MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini";
 const COACH_JSON_SCHEMA = `{
   "cv_md": string | null,
   "profile_updates": object | null,
@@ -68,7 +68,7 @@ export async function applyResumeCoachInstruction(
   instruction: string,
 ): Promise<CoachApplyResult> {
   const key = await resolveGeminiApiKey();
-  if (!key) throw new Error("GEMINI_API_KEY is not set in environment.");
+  if (!key) throw new Error("OPENAI_API_KEY is not set in environment.");
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -134,7 +134,7 @@ ${COACH_JSON_SCHEMA}`;
   };
   const text =
     data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
-  if (!text.trim()) throw new Error("Gemini returned empty output");
+  if (!text.trim()) throw new Error("LLM returned empty output");
 
   const parsed = parseCoachJson(text);
   const chatReply = String(parsed.chat_reply_md ?? "").trim();

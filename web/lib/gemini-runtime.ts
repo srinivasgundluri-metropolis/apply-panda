@@ -4,8 +4,9 @@ import { resolveGeminiApiKey } from "@/lib/outreach-mail";
 
 function parseFallbackModels(): string[] {
   const raw =
+    process.env.OPENAI_FALLBACK_MODELS ??
     process.env.GEMINI_FALLBACK_MODELS ??
-    "gemini-1.5-flash,gemini-2.0-flash-lite";
+    "gpt-4.1-mini";
   return raw
     .split(/[,\n;]/)
     .map((m) => m.trim())
@@ -20,7 +21,10 @@ function parseGeminiText(data: {
   ).trim();
 }
 
-export async function runGeminiPrompt(prompt: string, model = "gemini-2.0-flash") {
+export async function runGeminiPrompt(
+  prompt: string,
+  model = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini",
+) {
   return runGeminiPromptWithConfig(prompt, model, {
     temperature: 0.35,
     maxOutputTokens: 8192,
@@ -29,7 +33,7 @@ export async function runGeminiPrompt(prompt: string, model = "gemini-2.0-flash"
 
 export async function runGeminiPromptWithConfig(
   prompt: string,
-  model = "gemini-2.0-flash",
+  model = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini",
   config: { temperature?: number; maxOutputTokens?: number } = {},
 ) {
   return runGeminiPromptWithFallback(prompt, model, config);
@@ -37,12 +41,15 @@ export async function runGeminiPromptWithConfig(
 
 export async function runGeminiPromptWithFallback(
   prompt: string,
-  model = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash",
+  model =
+    process.env.OPENAI_MODEL?.trim() ||
+    process.env.GEMINI_MODEL?.trim() ||
+    "gpt-4.1-mini",
   config: { temperature?: number; maxOutputTokens?: number } = {},
 ) {
   const apiKey = await resolveGeminiApiKey();
   if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not set in environment.");
+    throw new Error("OPENAI_API_KEY is not set in environment.");
   }
   const temperature = config.temperature ?? 0.35;
   const maxOutputTokens = config.maxOutputTokens ?? 8192;
@@ -70,13 +77,13 @@ export async function runGeminiPromptWithFallback(
     };
     const text = parseGeminiText(json);
     if (!text) {
-      lastError = new Error(`Gemini returned empty output (model: ${modelName}).`);
+      lastError = new Error(`LLM returned empty output (model: ${modelName}).`);
       continue;
     }
     return text;
   }
 
-  throw lastError ?? new Error("Gemini request failed across all configured models.");
+  throw lastError ?? new Error("LLM request failed across all configured models.");
 }
 
 export function sseFromText(text: string) {

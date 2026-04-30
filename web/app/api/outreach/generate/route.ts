@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "GEMINI_API_KEY is not set. Add it to the repo root `.env` or configure `GEMINI_API_KEY` for the Next.js process.",
+          "OPENAI_API_KEY is not set. Add it to the repo root `.env` or configure `OPENAI_API_KEY` for the Next.js process.",
       },
       { status: 503 },
     );

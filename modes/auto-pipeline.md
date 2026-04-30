@@ -23,13 +23,32 @@ Ejecutar exactamente igual que el modo `oferta` (leer `modes/oferta.md` para tod
 Guardar la evaluación completa en `reports/{###}-{company-slug}-{YYYY-MM-DD}.md` (ver formato en `modes/oferta.md`).
 Include Block G in the saved report. Add `**Legitimacy:** {tier}` to the report header.
 
-## Paso 3 — Generar PDF
+## Paso 3 — Generar CV PDF
 Read `config/profile.yml`. Check `cv.output_format`:
 
 - If `"latex"`, execute the full pipeline from `modes/latex.md`
 - Otherwise (default), execute the full pipeline from `modes/pdf.md`
 
-## Paso 4 — Draft Application Answers (solo si score >= 4.5)
+## Paso 4 — Generar Cover Letter PDF
+
+Si el score final es >= 3.0, generar una cover letter de 1 pagina y exportarla a PDF:
+
+1. Crear markdown en `output/cover-letters/cover-letter-{candidate-slug}-{company-slug}-{YYYY-MM-DD}.md`.
+2. Escribir la carta en el idioma del JD. Usar tono directo, especifico y selectivo: el candidato esta eligiendo esta empresa.
+3. Mapear 2-3 requisitos o frases concretas del JD a proof points reales de `cv.md`, `article-digest.md`, `config/profile.yml` y el report. No inventar metricas.
+4. Mantenerla en una pagina: saludo, 3-4 parrafos breves, cierre.
+5. Exportar PDF:
+
+```bash
+node generate-cover-letter-pdf.mjs output/cover-letters/cover-letter-{candidate-slug}-{company-slug}-{YYYY-MM-DD}.md output/cover-letters/cover-letter-{candidate-slug}-{company-slug}-{YYYY-MM-DD}.pdf
+```
+
+- `{candidate-slug}` = `candidate.full_name` de `config/profile.yml` en lowercase con guiones; fallback `candidate`
+- `{company-slug}` = nombre de empresa en lowercase, sin espacios (usar guiones)
+- Si falla el PDF, conservar el `.md` y marcar la cover letter como pendiente en el resumen/report.
+- Si score < 3.0, NO generar cover letter; recomendar no aplicar.
+
+## Paso 5 — Draft Application Answers (solo si score >= 4.5)
 
 Si el score final es >= 4.5, generar borrador de respuestas para el formulario de aplicación:
 
@@ -65,7 +84,8 @@ Si el score final es >= 4.5, generar borrador de respuestas para el formulario d
 
 **Idioma**: Siempre en el idioma del JD (EN default). Aplicar `/tech-translate`.
 
-## Paso 5 — Actualizar Tracker
+## Paso 6 — Actualizar Tracker
 Registrar en `data/applications.md` con todas las columnas incluyendo Report y PDF en ✅.
+En el report, incluir tambien `**Cover Letter:** {ruta o pendiente}` en el header si se genero o intento generar.
 
 **Si algún paso falla**, continuar con los siguientes y marcar el paso fallido como pendiente en el tracker.

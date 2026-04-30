@@ -1,4 +1,5 @@
-streamlit>=1.36
-pandas>=2.0
-pyyaml>=6.0
-
+streamlit
+pandas
+pyyaml
+beautifulsoup4
+requests

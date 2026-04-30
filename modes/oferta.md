@@ -164,6 +164,7 @@ Guardar evaluación completa en `reports/{###}-{company-slug}-{YYYY-MM-DD}.md`.
 **Score:** {X/5}
 **Legitimacy:** {High Confidence | Proceed with Caution | Suspicious}
 **PDF:** {ruta o pendiente}
+**Cover Letter:** {ruta o pendiente}
 
 ---
 

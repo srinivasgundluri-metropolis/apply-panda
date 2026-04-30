@@ -33,24 +33,25 @@
 
 ## Diseño del PDF
 
-- **Fonts**: Space Grotesk (headings, 600-700) + DM Sans (body, 400-500)
-- **Fonts self-hosted**: `fonts/`
-- **Header**: nombre en Space Grotesk 24px bold + línea gradiente `linear-gradient(to right, hsl(187,74%,32%), hsl(270,70%,45%))` 2px + fila de contacto
-- **Section headers**: Space Grotesk 13px, uppercase, letter-spacing 0.05em, color cyan primary
-- **Body**: DM Sans 11px, line-height 1.5
-- **Company names**: color accent purple `hsl(270,70%,45%)`
-- **Márgenes**: 0.6in
+- **Fonts**: EB Garamond (headings & body, 400-700) or generic serif
+- **Fonts fallback**: Garamond, Times New Roman, serif
+- **Header**: Centered name in Bold All-Caps (26px) + Centered contact row (no gradients)
+- **Section headers**: Bold, Uppercase, 12px, black, with a 1pt solid black bottom border
+- **Body**: Serif 11px, line-height 1.3
+- **Organization names**: Bold black
+- **Role titles**: Italic black
+- **Márgenes**: 0.5in - 0.6in
 - **Background**: blanco puro
 
 ## Orden de secciones (optimizado "6-second recruiter scan")
 
-1. Header (nombre grande, gradiente, contacto, link portfolio)
-2. Professional Summary (3-4 líneas, keyword-dense)
-3. Core Competencies (6-8 keyword phrases en flex-grid)
-4. Work Experience (cronológico inverso)
-5. Projects (top 3-4 más relevantes)
-6. Education & Certifications
-7. Skills (idiomas + técnicos)
+1. Header (Nombre centrado, contacto centrado)
+2. Professional Summary (3-4 líneas, keyword-dense, justificado)
+3. Core Competencies (6-8 keyword phrases con separadores de punto medio)
+4. Work Experience (cronológico inverso, fechas a la derecha)
+5. Projects (top 3-4 más relevantes, fechas a la derecha)
+6. Education (títulos en negrita, fechas a la derecha)
+7. Certifications & Skills (formato lista limpia)
 
 ## Estrategia de keyword injection (ético, basado en verdad)
 

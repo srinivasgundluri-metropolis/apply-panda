@@ -9,13 +9,13 @@ Procesa URLs de ofertas acumuladas en `data/pipeline.md`. El usuario agrega URLs
    a. Calcular siguiente `REPORT_NUM` secuencial (leer `reports/`, tomar el número más alto + 1)
    b. **Extraer JD** usando Playwright (browser_navigate + browser_snapshot) → WebFetch → WebSearch
    c. Si la URL no es accesible → marcar como `- [!]` con nota y continuar
-   d. **Ejecutar auto-pipeline completo**: Evaluación A-F → Report .md → PDF (si score >= 3.0) → Tracker
-   e. **Mover de "Pendientes" a "Procesadas"**: `- [x] #NNN | URL | Empresa | Rol | Score/5 | PDF ✅/❌`
+   d. **Ejecutar auto-pipeline completo**: Evaluación A-G → Report .md → CV PDF (si score >= 3.0) → Cover Letter PDF (si score >= 3.0) → Tracker
+   e. **Mover de "Pendientes" a "Procesadas"**: `- [x] #NNN | URL | Empresa | Rol | Score/5 | CV ✅/❌ | Cover Letter ✅/❌`
 3. **Si hay 3+ URLs pendientes**, lanzar agentes en paralelo (Agent tool con `run_in_background`) para maximizar velocidad.
 4. **Al terminar**, mostrar tabla resumen:
 
 ```
-| # | Empresa | Rol | Score | PDF | Acción recomendada |
+| # | Empresa | Rol | Score | CV PDF | Cover Letter | Acción recomendada |
 ```
 
 ## Formato de pipeline.md
@@ -27,8 +27,8 @@ Procesa URLs de ofertas acumuladas en `data/pipeline.md`. El usuario agrega URLs
 - [!] https://private.url/job — Error: login required
 
 ## Procesadas
-- [x] #143 | https://jobs.example.com/posting/789 | Acme Corp | AI PM | 4.2/5 | PDF ✅
-- [x] #144 | https://boards.greenhouse.io/xyz/jobs/012 | BigCo | SA | 2.1/5 | PDF ❌
+- [x] #143 | https://jobs.example.com/posting/789 | Acme Corp | AI PM | 4.2/5 | CV ✅ | Cover Letter ✅
+- [x] #144 | https://boards.greenhouse.io/xyz/jobs/012 | BigCo | SA | 2.1/5 | CV ❌ | Cover Letter ❌
 ```
 
 ## Detección inteligente de JD desde URL
@@ -55,3 +55,17 @@ Antes de procesar cualquier URL, verificar sync:
 node cv-sync-check.mjs
 ```
 Si hay desincronización, advertir al usuario antes de continuar.
+
+## Cover Letter PDF
+
+El pipeline debe generar cover letter automaticamente cuando el score final sea >= 3.0, usando el paso correspondiente de `modes/auto-pipeline.md`.
+
+- Markdown fuente: `output/cover-letters/cover-letter-{candidate-slug}-{company-slug}-{YYYY-MM-DD}.md`
+- PDF final: `output/cover-letters/cover-letter-{candidate-slug}-{company-slug}-{YYYY-MM-DD}.pdf`
+- Comando:
+
+```bash
+node generate-cover-letter-pdf.mjs output/cover-letters/cover-letter-{candidate-slug}-{company-slug}-{YYYY-MM-DD}.md output/cover-letters/cover-letter-{candidate-slug}-{company-slug}-{YYYY-MM-DD}.pdf
+```
+
+Si falla la exportacion a PDF, conservar el markdown y reportar `Cover Letter pendiente`.

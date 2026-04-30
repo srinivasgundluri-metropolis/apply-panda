@@ -3,6 +3,8 @@ cv.md
 data/applications.md
 data/pipeline.md
 data/scan-history.tsv
+data/chat-history.json
+data/chat-history.json.tmp
 reports/*.md
 !reports/.gitkeep
 output/*

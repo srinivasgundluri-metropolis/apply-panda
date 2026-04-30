@@ -1,0 +1,100 @@
+# Career-Ops Profile Configuration
+# Copy this file to config/profile.yml and fill in your details.
+# This is the single source of truth for your personal data across all modes.
+
+candidate:
+  full_name: "Jeevitha Puttaiah"
+  email: "jeevithap2305@gmail.com"
+  phone: "+1-331-321-1273"
+  location: "Chicago, IL"
+  linkedin: "https://linkedin.com/in/jeevithap9820"
+  portfolio_url: ""
+  github: ""
+  twitter: ""
+
+target_roles:
+  # Your North Star roles — what you're optimizing for
+  primary:
+    - "Research Associate"
+    - "Research Assistant I"
+    - "Research Assistant II"
+    - "Senior Research Associate"
+    - "Research Fellow"
+    - "Research Scientist"
+    - "Bioinformatics Research Assistant"
+    - "Bioinformatics Research Associate"
+  # Archetypes help the evaluation system score fit
+  archetypes:
+    - name: "Biotechnology Research (Cancer/Cardio/Protein)"
+      level: "Early Career / New Grad (MS)"
+      fit: "primary"        # primary = dream role, secondary = good fit, adjacent = stretch
+    - name: "Molecular Biology / Cell Biology Lab"
+      level: "Early Career (MS)"
+      fit: "secondary"
+    - name: "Bioinformatics / Computational Biology"
+      level: "Early Career (MS)"
+      fit: "adjacent"
+
+narrative:
+  # Your professional headline (1 line)
+  headline: "Medical biotechnology graduate researcher focused on cardiovascular mechanobiology, molecular biology, and bioinformatics-adjacent research"
+  # Your exit story — what makes you unique
+  exit_story: "Hands-on research experience spanning cardiovascular valve mechanobiology (Calponin-2 / TGF-β signaling), CRISPR-Cas9 genome editing, and neurodegeneration model systems; comfortable moving from experiment design to data interpretation and clear scientific communication. Targeting university and research institute labs in life sciences (cancer/cardio/protein/omics)."
+  # Your top 3-5 superpowers
+  superpowers:
+    - "Molecular biology + protein biochemistry (CRISPR-Cas9, RT-qPCR, SDS-PAGE, western blot, protein purification)"
+    - "Cell & animal model work (cell culture, mouse handling, flow cytometry, microscopy, C. elegans)"
+    - "Experimental rigor + documentation (Benchling ELN, analysis, reproducible workflows)"
+    - "Mentoring and communication (intern supervision, presentations)"
+  # Proof points — projects, articles, case studies with measurable impact
+  proof_points:
+    - name: "Aortic valve mechanobiology (Cnn2 / TGF-β1)"
+      url: ""
+      hero_metric: "Mechanotransduction + calcification signaling characterization; pilot small-molecule screen"
+    - name: "CRISPR-Cas9 TOPORS knockout (mammalian cells)"
+      url: ""
+      hero_metric: "gRNA design → plasmid validation → phenotyping with T7 endonuclease + drug sensitivity assays"
+    - name: "C. elegans neurodegeneration models"
+      url: ""
+      hero_metric: "Assayed neuroprotective plant extracts; quantified paralysis/lifespan/behavioral outcomes; mentored 5 interns"
+  # Optional: dashboard/demo URL with credentials
+  # dashboard:
+  #   url: "https://janesmith.dev/demo"
+  #   password: "demo-2026"
+
+compensation:
+  target_range: "TBD"            # Your target total comp
+  currency: "USD"
+  minimum: "TBD"                 # Walk-away number
+  location_flexibility: "Open to relocation (CA Bay Area/SF/San Diego; Boston area) and hybrid/onsite roles"
+
+location:
+  country: "United States"
+  city: "Chicago"
+  timezone: "America/Chicago"
+  visa_status: "F-1 STEM OPT (no sponsorship needed until ~May 2029; sponsorship required after)"
+  # For remote roles outside your country:
+  # onsite_availability: "1 week/month in any city"
+
+job_search:
+  focus_areas:
+    - "Biotechnology"
+    - "Cancer / Oncology"
+    - "Cardiovascular"
+    - "Protein biology / Biochemistry"
+    - "Life sciences"
+    - "Bioinformatics"
+  target_institutions:
+    - "Stanford University"
+    - "UMass (Amherst / Chan Medical School)"
+  preferred_locations:
+    - "California (Bay Area / San Francisco)"
+    - "San Diego, CA"
+    - "Boston, MA area"
+
+cv:
+  output_format: "html" # "html" (default) or "latex"
+  # (Optional) Canva resume design ID for visual CV generation via /career-ops pdf.
+  # Find it in your Canva design URL: https://www.canva.com/design/DAxxxxxxx/...
+  # The ID starts with "D" and is 11 characters long.
+  # canva_resume_design_id: "DAxxxxxxxxx"

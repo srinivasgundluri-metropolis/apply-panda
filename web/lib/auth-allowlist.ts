@@ -1,9 +1,10 @@
 export function parseAllowedEmails(raw: string | undefined): Set<string> {
   if (!raw) return new Set();
+  const normalizedRaw = raw.trim().replace(/^['"]|['"]$/g, "");
   return new Set(
-    raw
-      .split(/[,\n]/)
-      .map((v) => v.trim().toLowerCase())
+    normalizedRaw
+      .split(/[,\n;]/)
+      .map((v) => v.trim().replace(/^['"]|['"]$/g, "").toLowerCase())
       .filter(Boolean),
   );
 }

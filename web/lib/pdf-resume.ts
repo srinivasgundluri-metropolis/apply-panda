@@ -82,12 +82,38 @@ async function extractTextWithPdfJs(buffer: Buffer): Promise<string> {
   return pages.join("\n\n").trim();
 }
 
+function extractTextHeuristicFromPdf(buffer: Buffer): string {
+  const raw = buffer.toString("latin1");
+  const matches = raw.match(/\((?:\\.|[^\\()]){3,}\)/g) ?? [];
+  const cleaned = matches
+    .map((m) =>
+      m
+        .slice(1, -1)
+        .replace(/\\n/g, " ")
+        .replace(/\\r/g, " ")
+        .replace(/\\t/g, " ")
+        .replace(/\\\(/g, "(")
+        .replace(/\\\)/g, ")")
+        .replace(/\\\\/g, "\\")
+        .replace(/\s+/g, " ")
+        .trim(),
+    )
+    .filter((s) => s.length >= 3 && /[A-Za-z]/.test(s));
+  const unique = Array.from(new Set(cleaned));
+  return unique.join("\n").trim();
+}
+
 function normalizePdfErrorMessage(error: unknown): Error {
   const message =
     error instanceof Error ? error.message : String(error ?? "PDF parsing failed.");
   if (message.toLowerCase().includes("did not match the expected pattern")) {
     return new Error(
       "PDF parser failed in this runtime. Please export the PDF again as a text PDF (not print/image PDF), or paste resume text directly.",
+    );
+  }
+  if (message.toLowerCase().includes("dommatrix is not defined")) {
+    return new Error(
+      "PDF fallback parser hit a runtime dependency issue (DOMMatrix). Please retry upload; a heuristic text-extraction fallback is now applied automatically.",
     );
   }
   return error instanceof Error ? error : new Error(message);
@@ -112,7 +138,12 @@ export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> 
       text = (result.text ?? "").replace(/\u0000/g, "").trim();
     } catch {
       // Fallback parser path for PDFs rejected by pdf-parse in some runtimes.
-      text = await extractTextWithPdfJs(buffer);
+      try {
+        text = await extractTextWithPdfJs(buffer);
+      } catch {
+        // Last-resort extraction without PDF.js runtime dependencies.
+        text = extractTextHeuristicFromPdf(buffer);
+      }
     }
     if (!text) {
       throw new Error(

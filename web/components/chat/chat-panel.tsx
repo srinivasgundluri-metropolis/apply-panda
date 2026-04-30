@@ -95,7 +95,7 @@ function buildPortalSearchReply(data: PortalSearchResponse): {
     `**Title rules:** positive ${pos} · negative ${neg}.`,
     "",
     kw
-      ? `**Keyword narrow:** _${kw.replace(/_/g, "\\_")}_ — any word (2+ chars) may match title, company, or location.`
+      ? `**Keyword narrow:** _${kw.replace(/_/g, "\\_")}_ — each token (3+ characters) must appear **as a whole word in the job title** (role); company/location are ignored for this step.`
       : `_No keyword narrow — showing up to **${data.query.limit}** roles that pass the title filter._`,
     "",
     `**Stats:** ${data.companies_scanned} boards · **${data.stats.title_filtered_total}** roles after title rules · **${data.stats.keyword_matched_total}** after keywords · **${data.stats.returned}** shown below.`,

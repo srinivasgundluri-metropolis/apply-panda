@@ -146,22 +146,29 @@ function dedupeByUrl(jobs: PortalJob[]): PortalJob[] {
   return out;
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
- * Optional narrowing: any token (length ≥ 2) must match title, company, or location.
- * Empty / whitespace query → no extra filter.
+ * Optional narrowing: user keywords apply to the **job title only** (the role string).
+ * - Tokens must be ≥ 3 chars (avoids bogus "AI" / "ML" substring noise unless spelled out).
+ * - **Every** token must match as a whole word in the title (AND), not substring inside company names.
  */
 export function applyKeywordNarrowing(jobs: PortalJob[], keywords: string): PortalJob[] {
   const q = keywords.trim().toLowerCase();
   if (!q) return jobs;
   const tokens = q
     .split(/\s+/)
-    .map((t) => t.replace(/[^\w.-]+/g, ""))
-    .filter((t) => t.length >= 2);
+    .map((t) => t.replace(/[^\w.+-]+/g, ""))
+    .filter((t) => t.length >= 3);
   if (tokens.length === 0) return jobs;
-  return jobs.filter((j) => {
-    const hay = `${j.title} ${j.company} ${j.location}`.toLowerCase();
-    return tokens.some((t) => hay.includes(t));
-  });
+  return jobs.filter((j) =>
+    tokens.every((tok) => {
+      const re = new RegExp(`\\b${escapeRegExp(tok)}\\b`, "i");
+      return re.test(j.title);
+    }),
+  );
 }
 
 export interface CollectPortalJobsOpts {

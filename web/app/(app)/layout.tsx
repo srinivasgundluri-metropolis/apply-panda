@@ -1,5 +1,7 @@
+import { redirect } from "next/navigation";
 import { readProfile, candidateFullName, candidateInitials } from "@/lib/profile";
 import { Sidebar } from "@/components/layout/sidebar";
+import { requireUser } from "@/lib/supabase/server";
 
 /**
  * Layout for every page that has the sidebar (everything except the
@@ -11,11 +13,14 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const { user } = await requireUser().catch(() => ({ user: null }));
+  if (!user) redirect("/auth");
+
   const profile = await readProfile();
-  const fullName = candidateFullName(profile);
+  const fullName = candidateFullName(profile) || user.user_metadata?.full_name || user.email || "";
   const initials = candidateInitials(profile);
   const location = (profile.candidate?.location ?? "").trim();
-  const email = (profile.candidate?.email ?? "").trim();
+  const email = (profile.candidate?.email ?? "").trim() || user.email || "";
 
   return (
     <div className="flex min-h-screen w-full">

@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { SseStream } from "@/components/sse-stream";
 
 /**
- * "Paste JD or URL" tab — exact analogue of the Streamlit pipeline page.
+ * "Paste JD or URL" tab — pipeline page for pasted JD / URL workflows.
  *
  * Two paths:
  *   1. URL alone → server fetches the page, strips HTML, hands the agent

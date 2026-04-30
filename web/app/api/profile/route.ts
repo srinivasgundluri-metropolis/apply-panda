@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readProfile, writeProfile } from "@/lib/profile";
+import { requireApiUser } from "@/lib/supabase/api";
 import type { Profile } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const auth = await requireApiUser();
+  if (auth.response) return auth.response;
   try {
     const profile = await readProfile();
     return NextResponse.json({ profile });
@@ -17,6 +20,8 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
+  const auth = await requireApiUser();
+  if (auth.response) return auth.response;
   let body: Profile;
   try {
     body = (await req.json()) as Profile;

@@ -1,5 +1,5 @@
 /**
- * Slugify identical to the Python helper used by streamlit_app.py and the
+ * Slugify identical to the Python helper in `dashboard/` and the
  * .mjs scripts (lowercase, drop non-alphanumerics, collapse whitespace,
  * trim/squeeze hyphens). Critical that the two implementations agree —
  * otherwise React will fail to find files written by the Python side.

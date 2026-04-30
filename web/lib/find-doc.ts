@@ -1,7 +1,7 @@
 /**
  * Find an existing tailored CV or cover letter PDF for a (candidate,
  * company) pair. Mirrors the Python `find_existing_doc` fuzzy-matching
- * strategy so the React UI agrees with Streamlit on whether docs exist.
+ * strategy so the React UI agrees with `dashboard/` on whether docs exist.
  *
  * Filename conventions written by the modes/pdf flow:
  *   output/cv-{candidate-slug}-{company-slug}-{YYYY-MM-DD}.pdf

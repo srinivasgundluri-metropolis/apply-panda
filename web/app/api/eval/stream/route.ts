@@ -1,56 +1,36 @@
 import { NextRequest } from "next/server";
-import { writeFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
-import { streamProcess, SSE_HEADERS } from "@/lib/shell";
-import { buildEvalPrompt } from "@/lib/prompts";
-import { JDS_DIR, REPO_ROOT } from "@/lib/paths";
+import { requireApiUser } from "@/lib/supabase/api";
+import { sseError, sseFromText, runGeminiPrompt } from "@/lib/gemini-runtime";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Streams cursor-agent running the full A–G evaluation flow (`oferta`).
- * The JD text is staged to `jds/dashboard-{ts}.txt` so the agent has a
- * stable file path to refer to (matches the Streamlit `stage_jd` flow).
+ * Streams Gemini-based evaluation output via SSE.
  *
  * Body shape:
  *   { jdText: string, sourceUrl?: string, model?: string }
  */
 export async function POST(req: NextRequest) {
+  const auth = await requireApiUser();
+  if (auth.response) {
+    return sseError("Unauthorized", 401);
+  }
   let body: { jdText?: string; sourceUrl?: string; model?: string };
   try {
     body = await req.json();
   } catch {
-    return new Response(
-      `data: ${JSON.stringify({ type: "error", message: "Invalid JSON" })}\n\n`,
-      { status: 400, headers: SSE_HEADERS },
-    );
+    return sseError("Invalid JSON", 400);
   }
   const jdText = (body.jdText ?? "").trim();
   if (!jdText) {
-    return new Response(
-      `data: ${JSON.stringify({ type: "error", message: "jdText required" })}\n\n`,
-      { status: 400, headers: SSE_HEADERS },
-    );
+    return sseError("jdText required", 400);
   }
 
-  // Stage the JD on disk so the agent can `cat` it if it wants.
-  await mkdir(JDS_DIR, { recursive: true });
-  const ts = new Date().toISOString().replace(/[:.]/g, "-");
-  const jdPath = join(JDS_DIR, `web-${ts}.txt`);
-  const header = body.sourceUrl ? `Source URL: ${body.sourceUrl}\n\n` : "";
-  await writeFile(jdPath, `${header}${jdText}\n`, "utf-8");
-
-  const prompt = buildEvalPrompt(jdText, body.sourceUrl);
-  const args = [
-    "-p",
-    "--force",
-    "--trust",
-    "--workspace",
-    REPO_ROOT,
-  ];
-  if (body.model) args.push("--model", body.model);
-  args.push(prompt);
-
-  const stream = streamProcess("cursor-agent", args);
-  return new Response(stream, { headers: SSE_HEADERS });
+  const prompt = `You are an expert job-fit evaluator.\nReturn concise GitHub markdown with sections:\n1) Role and company summary\n2) Fit score (0-5 with one decimal)\n3) Strengths (bullet list)\n4) Risks/Gaps (bullet list)\n5) Recommendation (Apply / Skip) with one-paragraph rationale\n6) Next actions (3 bullets)\n\n${body.sourceUrl ? `Source URL: ${body.sourceUrl}\n` : ""}\nJob description:\n---\n${jdText.slice(0, 24000)}\n---`;
+  try {
+    const text = await runGeminiPrompt(prompt, body.model);
+    return sseFromText(text);
+  } catch (e) {
+    return sseError((e as Error).message || "Evaluation failed", 500);
+  }
 }

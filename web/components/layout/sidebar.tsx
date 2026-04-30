@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   TableProperties,
@@ -10,12 +11,14 @@ import {
   Search,
   FileText,
   UserRound,
-  Sparkles,
 } from "lucide-react";
+import { LogoMark } from "@/components/branding/logo-mark";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 interface SidebarProps {
   candidateName: string;
@@ -76,15 +79,25 @@ export function Sidebar({
   candidateEmail,
 }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const signOut = async () => {
+    try {
+      const supabase = createSupabaseBrowserClient();
+      await supabase.auth.signOut();
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      router.push("/auth");
+      router.refresh();
+    }
+  };
 
   return (
     <aside className="flex flex-col gap-2 border-r bg-sidebar text-sidebar-foreground w-72 shrink-0 h-screen sticky top-0">
       <div className="px-5 pt-5 pb-3 flex items-center gap-2">
-        <div className="size-8 rounded-md bg-primary text-primary-foreground flex items-center justify-center">
-          <Sparkles className="size-4" />
-        </div>
+        <LogoMark />
         <div className="flex flex-col leading-tight">
-          <span className="font-semibold text-sm">Career-Ops</span>
+          <span className="font-semibold text-sm">ApplyPanda</span>
           <span className="text-xs text-muted-foreground">
             AI job search command center
           </span>
@@ -142,10 +155,15 @@ export function Sidebar({
       </nav>
 
       <div className="border-t px-3 py-3 flex items-center justify-between gap-2">
-        <Badge variant="outline" className="text-[10px]">
-          local · v1
-        </Badge>
-        <ThemeToggle />
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-[10px]">
+            SaaS · beta
+          </Badge>
+          <ThemeToggle />
+        </div>
+        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={signOut}>
+          Sign out
+        </Button>
       </div>
     </aside>
   );

@@ -10,7 +10,7 @@
  * Both use `node` from PATH, so the host needs Node available. We resolve
  * paths against REPO_ROOT (the parent of `web/`) so the scripts can read
  * cv.md, modes/*, etc. relative to their working directory just like
- * Streamlit and the CLI.
+ * the CLI and other local tools.
  */
 
 import { spawn } from "node:child_process";

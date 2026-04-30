@@ -3,7 +3,7 @@
  * in `applications.md`) stays exactly what the user / pipeline wrote, but
  * we surface a richer label in the React UI when the row's filesystem
  * artifacts (CV PDF, cover letter PDF) tell us there's something more
- * specific to say. Same logic as Streamlit's `_derive_status_label`.
+ * specific to say. Same logic as the Python dashboard `_derive_status_label`.
  */
 
 /**

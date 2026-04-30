@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { readApplications } from "@/lib/parse-applications";
 import { readProfile, candidateFullName } from "@/lib/profile";
 import { candidateSlug } from "@/lib/slugify";
+import { requireApiUser } from "@/lib/supabase/api";
 
 // We never want this cached — applications.md is mutated by the .mjs scripts
 // and by user edits, so the dashboard must always read fresh from disk.
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const auth = await requireApiUser();
+  if (auth.response) return auth.response;
   try {
     const profile = await readProfile();
     const slug = candidateSlug(candidateFullName(profile));

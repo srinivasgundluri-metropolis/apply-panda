@@ -12,7 +12,7 @@ export default async function ChatPage() {
     <>
       <PageHeader
         title="AI Chat"
-        description="Talk to your career-ops assistant. It can search LinkedIn, query your local data, and trigger inline evaluations — without ever editing your files unless you ask."
+        description="Talk to ApplyPanda. It can search LinkedIn, query your local data, and trigger inline evaluations — without ever editing your files unless you ask."
       />
       <div className="px-8 py-6 flex-1 min-h-0 flex flex-col">
         <ChatPanel candidateFirst={first} />

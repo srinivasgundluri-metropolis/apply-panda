@@ -1,29 +1,26 @@
 /**
- * Read + deep-merge `config/profile.yml`. Uses the `yaml` library which is
- * a Next.js-friendly pure-JS parser. Backups follow the same convention as
- * the Python side (writes `profile.yml.bak` once per merge).
+ * User profile read/write backed by Supabase (`profiles` table).
+ * Column contract:
+ *   profiles.user_id (PK, uuid) | profiles.data (jsonb)
  */
 
-import { readFile, writeFile, copyFile, access } from "node:fs/promises";
-import { dirname } from "node:path";
-import { mkdir } from "node:fs/promises";
-import * as yaml from "yaml";
-import { PROFILE_PATH } from "./paths";
+import { createSupabaseServerClient, UnauthorizedError } from "./supabase/server";
 import type { Profile } from "./types";
 
-function exists(p: string): Promise<boolean> {
-  return access(p).then(
-    () => true,
-    () => false,
-  );
-}
-
 export async function readProfile(): Promise<Profile> {
-  if (!(await exists(PROFILE_PATH))) return {};
-  const raw = await readFile(PROFILE_PATH, "utf-8");
   try {
-    const parsed = yaml.parse(raw);
-    return (parsed as Profile) ?? {};
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+    if (userErr || !user) return {};
+    const { data } = await supabase
+      .from("profiles")
+      .select("data")
+      .eq("user_id", user.id)
+      .maybeSingle<{ data: Profile }>();
+    return (data?.data ?? {}) as Profile;
   } catch {
     return {};
   }
@@ -62,25 +59,33 @@ function deepMerge(
  * returns the merged document so the caller can echo back the new state.
  */
 export async function writeProfile(updates: Profile): Promise<Profile> {
-  await mkdir(dirname(PROFILE_PATH), { recursive: true });
-
   const existing = await readProfile();
-  const backupPath = `${PROFILE_PATH}.bak`;
-  if ((await exists(PROFILE_PATH)) && !(await exists(backupPath))) {
-    await copyFile(PROFILE_PATH, backupPath).catch(() => {
-      /* non-fatal */
-    });
-  }
 
   const merged = deepMerge(
     { ...(existing as Record<string, unknown>) },
     updates as Record<string, unknown>,
   );
-  const serialized = yaml.stringify(merged, {
-    indent: 2,
-    lineWidth: 120,
-  });
-  await writeFile(PROFILE_PATH, serialized, "utf-8");
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+  if (userErr || !user) {
+    throw new UnauthorizedError("Sign in required to update profile.");
+  }
+  const { error } = await supabase
+    .from("profiles")
+    .upsert(
+      {
+        user_id: user.id,
+        data: merged,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" },
+    );
+  if (error) throw error;
+
   return merged as Profile;
 }
 

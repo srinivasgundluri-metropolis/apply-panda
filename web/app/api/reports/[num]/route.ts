@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { findReportByNum } from "@/lib/parse-reports";
+import { requireApiUser } from "@/lib/supabase/api";
 
 export const dynamic = "force-dynamic";
 
@@ -7,6 +8,8 @@ export async function GET(
   _req: Request,
   context: { params: Promise<{ num: string }> },
 ) {
+  const auth = await requireApiUser();
+  if (auth.response) return auth.response;
   const { num } = await context.params;
   try {
     const report = await findReportByNum(num);

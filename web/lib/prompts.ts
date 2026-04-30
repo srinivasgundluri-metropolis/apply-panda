@@ -1,13 +1,10 @@
 /**
- * Prompt builders for the cursor-agent invocations the React app makes.
- * Direct port of the Python helpers in streamlit_app.py — keeping them in
- * sync is critical because the agent's behavior is the same regardless of
- * which UI submitted the prompt.
+ * Prompt builders for Gemini-backed React app routes.
  *
  * Three flavors:
- *   - buildChatPrompt:        ad-hoc Q&A and LinkedIn search
- *   - buildEvalPrompt:        full A–G evaluation with report + tracker write
- *   - buildCvPrompt / buildClPrompt: tailored document generation
+ *   - buildChatPrompt: ad-hoc Q&A and LinkedIn search guidance
+ *   - buildEvalPrompt: job evaluation guidance
+ *   - buildCvPrompt / buildClPrompt: tailored document drafting
  */
 
 interface ChatHistoryItem {

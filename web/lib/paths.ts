@@ -2,7 +2,7 @@
  * Centralized filesystem path map. Every other lib module imports paths from
  * here so the answer to "where does career-ops live on disk?" lives in one
  * place. The Next.js app is at `<repo>/web/`, so we walk one parent up to
- * find the canonical career-ops root that Streamlit, the .mjs scripts, and
+ * find the canonical career-ops root that the .mjs scripts and
  * the modes/templates files all expect.
  *
  * `REPO_ROOT` auto-detects whether the server cwd is `<repo>/web` or `<repo>`.

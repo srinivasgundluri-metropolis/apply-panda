@@ -3,7 +3,7 @@
  * matching pattern wins, so put the most specific signals (final "DONE",
  * tracker merge, report write) before generic ones (reading files, search).
  *
- * Mirrors `_PHASE_PATTERNS` in streamlit_app.py — both UIs surface the
+ * Mirrors `_PHASE_PATTERNS` in `dashboard/` — both UIs surface the
  * same phase labels so the user has a consistent mental model.
  */
 

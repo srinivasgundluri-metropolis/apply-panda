@@ -33,15 +33,15 @@ export default async function ScanResultsPage() {
               <Search className="size-10 mx-auto text-muted-foreground mb-3" />
               <p className="font-medium mb-1">Scan history is empty</p>
               <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
-                Configure companies under{" "}
-                <Link href="/profile?tab=boards" className="underline underline-offset-2 font-medium">
-                  Profile → ATS job boards
+                Add roles and location under{" "}
+                <Link href="/profile?tab=yaml" className="underline underline-offset-2 font-medium">
+                  Profile → Targeting
                 </Link>
                 , then run <strong>Scan job boards</strong> from Pipeline.
               </p>
               <div className="flex flex-wrap gap-2 justify-center">
                 <Button asChild>
-                  <Link href="/profile?tab=boards">Configure boards</Link>
+                  <Link href="/profile?tab=yaml">Open targeting</Link>
                 </Button>
                 <Button asChild variant="outline">
                   <Link href="/pipeline">Open Pipeline</Link>

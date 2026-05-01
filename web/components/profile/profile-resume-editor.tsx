@@ -32,20 +32,14 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { DEFAULT_PORTAL_CATALOG_SIZE } from "@/lib/default-portal-catalog";
-import { HOSTED_SCAN_MATCH_LIMIT } from "@/lib/portal-scan";
 import type { Profile } from "@/lib/types";
-import {
-  AtsBoardsEditor,
-  type AtsBoardsEditorHandle,
-} from "@/components/profile/ats-boards-editor";
 
 interface Props {
   initial: Profile;
   /** Raw contents of repo-root `cv.md` — your experience narrative. */
   initialCvMarkdown: string;
-  /** Initial tab when opening from deep links (e.g. `?tab=boards`). */
-  defaultTab?: "resume" | "yaml" | "portals";
+  /** Initial tab when opening from deep links (e.g. `?tab=yaml`). */
+  defaultTab?: "resume" | "yaml";
 }
 
 const CHAT_HISTORY_KEY = "career-ops:chat-history";
@@ -123,20 +117,6 @@ export function ProfileResumeEditor({
   const [dealBreakers, setDealBreakers] = React.useState(
     (initial.narrative?.deal_breakers ?? []).join("\n"),
   );
-
-  const atsBoardsRef = React.useRef<AtsBoardsEditorHandle>(null);
-  const portalsSeed = JSON.stringify(initial.portals ?? null);
-  const roleFallbackTitleLines = React.useMemo(() => {
-    const rawPrimary = initial.target_roles?.primary;
-    const primary =
-      Array.isArray(rawPrimary)
-        ? rawPrimary.map(String)
-        : typeof rawPrimary === "string"
-          ? [rawPrimary]
-          : [];
-    const secondary = (initial.target_roles?.secondary ?? []).map(String);
-    return [...new Set([...primary, ...secondary].map((x) => x.trim()).filter(Boolean))];
-  }, [initial.target_roles?.primary, initial.target_roles?.secondary]);
 
   const [cvMarkdown, setCvMarkdown] = React.useState(initialCvMarkdown);
   const cvIsEmpty = cvMarkdown.trim().length === 0;
@@ -224,23 +204,9 @@ export function ProfileResumeEditor({
           proof_points: splitList(proofPoints),
           deal_breakers: splitList(dealBreakers),
         },
+        /** Clear legacy per-user portals blob; ATS scan uses Targeting + built-in catalog. */
+        portals: null,
       };
-
-      if (atsBoardsRef.current?.hasIncompleteCompanyRows()) {
-        toast.error("Scan targeting invalid—fix highlighted fields.");
-        setSaving(false);
-        return;
-      }
-      const portalsFromForm = atsBoardsRef.current?.getConfig() ?? null;
-      if (portalsFromForm) {
-        payload.portals = portalsFromForm;
-      } else {
-        /**
-         * Allow explicit clear of scan-targeting config; backend scanner will
-         * fallback to target_roles.primary/secondary when portals titles are empty.
-         */
-        payload.portals = null;
-      }
 
       const resProfile = await fetch("/api/profile", {
         method: "PUT",
@@ -274,7 +240,7 @@ export function ProfileResumeEditor({
       }
 
       if (profileOk && cvOk) {
-        toast.success("Profile, scan targeting, and résumé updated.");
+        toast.success("Profile and résumé updated.");
       } else {
         toast.warning(
           `Profile updated, but résumé save failed: ${cvBody.error ?? `CV HTTP ${resCv.status}`}`,
@@ -322,7 +288,6 @@ export function ProfileResumeEditor({
         <TabsList className="w-fit flex-wrap">
           <TabsTrigger value="resume">Résumé (`cv.md`)</TabsTrigger>
           <TabsTrigger value="yaml">Targeting (`profile.yml`)</TabsTrigger>
-          <TabsTrigger value="portals">Scan targeting</TabsTrigger>
         </TabsList>
 
         <TabsContent value="resume" className="mt-2">
@@ -413,6 +378,11 @@ export function ProfileResumeEditor({
           <Card>
             <CardHeader>
               <CardTitle>Target roles</CardTitle>
+              <CardDescription className="text-sm leading-relaxed">
+                Pipeline <strong>Scan job boards</strong> and Chat job-board search use these lines (plus{" "}
+                <strong>Location</strong> under Candidate) as title/location filters against the hosted ATS catalog.
+                The catalog itself is fixed in the product; you do not maintain a company list in the UI.
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <Field
@@ -483,39 +453,13 @@ export function ProfileResumeEditor({
             </CardContent>
           </Card>
         </TabsContent>
-
-        <TabsContent value="portals" className="mt-2">
-          <Card id="profile-ats-boards" className="scroll-mt-24">
-            <CardHeader>
-              <CardTitle>Scan targeting</CardTitle>
-              <CardDescription className="space-y-2 text-sm leading-relaxed">
-                <p>
-                  Set <strong>titles</strong> and <strong>locations</strong>—we poll{" "}
-                  <strong>{DEFAULT_PORTAL_CATALOG_SIZE}</strong> Greenhouse/Ashby/Lever boards by default,
-                  optionally narrow boards by employer-name substring, then keep the newest{" "}
-                  <strong>{HOSTED_SCAN_MATCH_LIMIT}</strong> postings that fit. Saves with your profile for{" "}
-                  <strong>Chat → search job boards</strong> and <strong>Pipeline → Scan job boards</strong>.
-                </p>
-                <p>Optional employer substring filter only (not a global company search); optional title excludes.</p>
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <AtsBoardsEditor
-                ref={atsBoardsRef}
-                portalsSeed={portalsSeed}
-                fallbackTitleLines={roleFallbackTitleLines}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       <Separator />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground max-w-lg">
-          Saves targeting, résumé markdown, and scan title/location filters so ATS scans, search, and tailored
-          documents stay in sync.
+          Saves targeting and résumé markdown so ATS scans, search, and tailored documents stay in sync.
         </p>
         <Button type="submit" disabled={saving} size="lg">
           {saving ? (

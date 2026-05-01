@@ -22,17 +22,16 @@ export function ScanRunner() {
       <div className="rounded-lg border bg-muted/30 px-4 py-3 flex gap-3 text-sm text-muted-foreground">
         <Info className="size-4 shrink-0 text-foreground/70 mt-0.5" aria-hidden />
         <p className="min-w-0 leading-relaxed">
-          Set titles and locations under{" "}
+          Title and location filters come from{" "}
           <Link
-            href="/profile?tab=portals"
+            href="/profile?tab=yaml"
             className="text-foreground font-medium underline underline-offset-2 hover:text-primary"
           >
-            Profile → Scan targeting
-          </Link>
-          . By default we hit every board in the hosted catalog ({DEFAULT_PORTAL_CATALOG_SIZE} employers); add an
-          optional employer-name filter
-          there if you only want specific companies. Each run ranks matches by recency when the ATS exposes dates
-          and saves up to 100 newest URLs to Scan results (skipping ones you already stored).
+            Profile → Targeting
+          </Link>{" "}
+          (primary/secondary roles, archetypes, and candidate location). We query every board in the hosted catalog (
+          {DEFAULT_PORTAL_CATALOG_SIZE} employers). Each run ranks matches by recency when the ATS exposes dates and
+          saves up to 100 newest URLs to Scan results (skipping ones you already stored).
         </p>
       </div>
       <Card className="px-6 py-5 gap-3">
@@ -41,7 +40,7 @@ export function ScanRunner() {
             <p className="font-medium text-base">Scan job boards</p>
             <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
               Runs <strong className="text-foreground font-medium">without any LLM</strong> — direct ATS HTTP APIs only
-              (same idea as local <code className="rounded bg-muted px-1 py-px text-xs">scan.mjs</code>). Queries the built-in ATS board list with your saved title &amp; location rules, ranks matches by newest
+              (same idea as local <code className="rounded bg-muted px-1 py-px text-xs">scan.mjs</code>). Queries the built-in ATS board list using your profile targeting lines, ranks matches by newest
               timestamps where available, then writes up to 100 postings to{" "}
               <strong>Scan results</strong>{" "}
               <Badge variant="outline" className="text-[10px] mx-0.5 align-middle">

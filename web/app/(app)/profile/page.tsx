@@ -27,18 +27,16 @@ export default async function ProfilePage({
 }) {
   const tab = (searchParams ? await searchParams : {}).tab;
   const defaultTab =
-    tab === "boards" || tab === "portals"
-      ? ("portals" as const)
-      : tab === "yaml" || tab === "targeting"
-        ? ("yaml" as const)
-        : ("resume" as const);
+    tab === "yaml" || tab === "targeting" || tab === "boards" || tab === "portals"
+      ? ("yaml" as const)
+      : ("resume" as const);
 
   const [profile, cvMd] = await Promise.all([readProfile(), readCvMd()]);
   return (
     <>
       <PageHeader
         title="Profile & résumé"
-        description="Edit targeting, résumé, and title/location rules for ATS scans (built-in boards). Keeps scans, chat search, and tailored CVs aligned."
+        description="Edit targeting and résumé. ATS scans use your target roles, archetypes, and candidate location against the product’s built-in board catalog."
       />
       <div className="px-8 py-6 max-w-4xl">
         <ProfileResumeEditor

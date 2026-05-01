@@ -33,7 +33,7 @@ export async function GET() {
       };
       (async () => {
         try {
-          send("stdout", "Loading portal configuration…");
+          send("stdout", "Loading scan filters from profile…");
           const cfg = await loadPortalsConfigResolved(auth.supabase, auth.user.id);
           send("stdout", "Fetching curated ATS boards…");
           const { jobs: ranked, companiesScanned } = await collectAllTitleFilteredPortalJobs(cfg);

@@ -156,7 +156,7 @@ export interface AddToScanResult {
   error?: string | null;
 }
 
-/** Same JSON shape as career-ops `portals.yml`; stored on the signed-in user profile. */
+/** Same JSON shape as career-ops `portals.yml`. Hosted scans replace `tracked_companies` with the product catalog at runtime; optional legacy `profiles.data.portals` may still carry extras until cleared. */
 export interface PortalsTrackedCompany {
   name?: string;
   enabled?: boolean;

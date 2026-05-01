@@ -15,13 +15,13 @@ export default async function ScanResultsPage() {
   return (
     <>
       <PageHeader
-        title="Scan Results"
-        description="Every job the portal scanner has surfaced. Filter, click ⚡ to evaluate inline, and the row's status flips to Evaluated automatically."
+        title="Scan results"
+        description="Jobs discovered from your ATS board scan. Filter the table, use ⚡ Evaluate on a row, and status updates when a report is saved."
         actions={
           <Button asChild variant="outline">
             <Link href="/pipeline">
               <Search className="size-4" />
-              Run scan
+              Scan job boards
             </Link>
           </Button>
         }
@@ -32,12 +32,21 @@ export default async function ScanResultsPage() {
             <CardContent className="px-6 py-16 text-center">
               <Search className="size-10 mx-auto text-muted-foreground mb-3" />
               <p className="font-medium mb-1">Scan history is empty</p>
-              <p className="text-sm text-muted-foreground mb-4">
-                Run a portal scan from the Pipeline page to populate this view.
+              <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
+                Configure companies under{" "}
+                <Link href="/profile?tab=boards" className="underline underline-offset-2 font-medium">
+                  Profile → ATS job boards
+                </Link>
+                , then run <strong>Scan job boards</strong> from Pipeline.
               </p>
-              <Button asChild>
-                <Link href="/pipeline">Open Pipeline</Link>
-              </Button>
+              <div className="flex flex-wrap gap-2 justify-center">
+                <Button asChild>
+                  <Link href="/profile?tab=boards">Configure boards</Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/pipeline">Open Pipeline</Link>
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ) : (

@@ -38,6 +38,8 @@ interface Props {
   initial: Profile;
   /** Raw contents of repo-root `cv.md` — your experience narrative. */
   initialCvMarkdown: string;
+  /** Initial tab when opening from deep links (e.g. `?tab=boards`). */
+  defaultTab?: "resume" | "yaml" | "portals";
 }
 
 /**
@@ -48,7 +50,11 @@ interface Props {
  * - **ATS + Full CV** — two PDFs per role (`-ats`/`-full` suffix); see modes/pdf.md
  * - Cover letter remains a separate PDF beside them
  */
-export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
+export function ProfileResumeEditor({
+  initial,
+  initialCvMarkdown,
+  defaultTab = "resume",
+}: Props) {
   const router = useRouter();
   const [saving, setSaving] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
@@ -239,11 +245,11 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
 
   return (
     <form onSubmit={saveAll} className="flex flex-col gap-6">
-      <Tabs defaultValue="resume" className="gap-4">
+      <Tabs defaultValue={defaultTab} className="gap-4">
         <TabsList className="w-fit flex-wrap">
           <TabsTrigger value="resume">Résumé (`cv.md`)</TabsTrigger>
           <TabsTrigger value="yaml">Targeting (`profile.yml`)</TabsTrigger>
-          <TabsTrigger value="portals">Portals (`portals.yml`)</TabsTrigger>
+          <TabsTrigger value="portals">ATS job boards</TabsTrigger>
         </TabsList>
 
         <TabsContent value="resume" className="mt-2">
@@ -402,17 +408,22 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
         </TabsContent>
 
         <TabsContent value="portals" className="mt-2">
-          <Card>
+          <Card id="profile-ats-boards" className="scroll-mt-24">
             <CardHeader>
-              <CardTitle>Portal scanner (per user)</CardTitle>
-              <CardDescription>
-                Stored in Supabase as <code className="text-xs">profiles.data.portals</code>.
-                Same JSON shape as root <code className="text-xs">portals.yml</code> (
-                <code className="text-xs">tracked_companies</code>,{" "}
-                <code className="text-xs">title_filter</code>). Chat <strong>Search portals</strong>{" "}
-                and Pipeline <strong>Run scan</strong> use only this list — there is no shared
-                default company bundle. Clear the field and save to remove saved portals (scans will
-                ask you to configure again until you paste JSON and save).
+              <CardTitle>ATS job boards</CardTitle>
+              <CardDescription className="space-y-2 text-sm leading-relaxed">
+                <p>
+                  Choose which company career sites we query for open roles (Greenhouse, Ashby, and
+                  Lever public APIs only). This list is private to your account and powers{" "}
+                  <strong>Chat → search job boards</strong> and <strong>Pipeline → Scan job boards</strong>.
+                </p>
+                <p>
+                  Paste JSON with <code className="text-xs">tracked_companies</code> and optional{" "}
+                  <code className="text-xs">title_filter</code> — same structure as the open-source{" "}
+                  <code className="text-xs">portals.yml</code> in career-ops. There is no shared default
+                  list. Clear the field and save only if you intend to remove the list; scans will
+                  prompt you to configure boards again.
+                </p>
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -437,9 +448,8 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground max-w-lg">
-          One button updates your Supabase profile (including optional{" "}
-          <code className="text-xs">portals</code> JSON), <code className="text-xs">cv.md</code> in
-          storage, and keeps tailored CV/cover flows aligned.
+          Saves targeting, résumé markdown, and your ATS board list so scans, search, and tailored
+          documents stay in sync.
         </p>
         <Button type="submit" disabled={saving} size="lg">
           {saving ? (

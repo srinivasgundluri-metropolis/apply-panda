@@ -8,13 +8,13 @@ export default function PipelinePage() {
     <>
       <PageHeader
         title="Pipeline"
-        description="Two ways to feed the system: paste a JD / URL for a single evaluation, or trigger a portal scan to surface fresh offers."
+        description="Paste a job description or URL to evaluate one role, or run an ATS board scan to pull fresh listings from the companies configured on your profile."
       />
       <div className="px-8 py-6">
         <Tabs defaultValue="paste" className="gap-6">
           <TabsList>
             <TabsTrigger value="paste">Paste JD or URL</TabsTrigger>
-            <TabsTrigger value="scan">Scan portals</TabsTrigger>
+            <TabsTrigger value="scan">Scan job boards</TabsTrigger>
           </TabsList>
           <TabsContent value="paste">
             <PasteForm />

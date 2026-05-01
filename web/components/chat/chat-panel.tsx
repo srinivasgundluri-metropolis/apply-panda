@@ -108,7 +108,7 @@ function buildPortalSearchReply(data: PortalSearchResponse): {
     : "_none_";
   const kw = data.query.keywords.trim();
   const lines: string[] = [
-    "**Company portals** (Greenhouse · Ashby · Lever) with `portals.yml` **title_filter**.",
+    "**Job board search** (Greenhouse · Ashby · Lever) using your profile **title_filter** rules.",
     "",
     `**Title rules:** positive ${pos} · negative ${neg}.`,
     "",
@@ -123,7 +123,7 @@ function buildPortalSearchReply(data: PortalSearchResponse): {
     return {
       content:
         lines.join("\n") +
-        "\n\n_No matches. Try different keywords or edit `title_filter` / tracked companies in `portals.yml`._",
+        "\n\n_No matches. Try different keywords, or widen title rules under **Profile → ATS job boards**._",
       jobs: [],
     };
   }
@@ -619,7 +619,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                 <p className="text-sm text-muted-foreground max-w-md mt-1">
                   {resumeCoachMode
                     ? "Describe changes, upload a résumé file (`.docx/.md/.txt`) for conversion, or both — the coach merges into your workspace using your configured model."
-                    : "With **Search portals** on, your message runs Greenhouse/Ashby/Lever using `portals.yml` title filters, then narrows by keywords — real posting URLs only. Turn it off for tracker/report questions."}
+                    : "With **Search job boards** on, your message queries Greenhouse, Ashby, and Lever using the companies and title filters from your profile, then optional keywords — real posting URLs only. Turn it off for tracker, reports, or general chat."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 justify-center max-w-2xl mt-2">
@@ -678,7 +678,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
           ) : streaming || portalSearching ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              <span>{portalSearching ? "Searching portals…" : "thinking…"}</span>
+              <span>{portalSearching ? "Searching job boards…" : "thinking…"}</span>
             </div>
           ) : null}
         </div>
@@ -712,9 +712,9 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                 disabled={busy}
               />
               <span className="text-xs text-muted-foreground leading-snug">
-                <span className="font-medium text-foreground">Search portals first</span> —{" "}
-                Greenhouse / Ashby / Lever from <code className="text-[10px]">portals.yml</code>{" "}
-                (title_filter), then optional keyword narrow. Off = plain AI chat (tracker, reports, strategy).
+                <span className="font-medium text-foreground">Search job boards first</span> —{" "}
+                Greenhouse, Ashby, and Lever using your profile board list and title filters, then optional
+                keywords. Off = plain AI chat (tracker, reports, strategy).
               </span>
             </label>
           ) : null}

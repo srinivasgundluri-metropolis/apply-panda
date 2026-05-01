@@ -136,7 +136,7 @@ export function ScanTable({ rows, portals }: ScanTableProps) {
             <SelectValue placeholder="Portal" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All portals</SelectItem>
+            <SelectItem value="all">All sources</SelectItem>
             {portals.map((p) => (
               <SelectItem key={p} value={p}>
                 {p}

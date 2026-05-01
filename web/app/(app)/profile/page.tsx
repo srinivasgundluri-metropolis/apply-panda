@@ -20,16 +20,32 @@ async function readCvMd(): Promise<string> {
   }
 }
 
-export default async function ProfilePage() {
+export default async function ProfilePage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tab?: string }>;
+}) {
+  const tab = (searchParams ? await searchParams : {}).tab;
+  const defaultTab =
+    tab === "boards" || tab === "portals"
+      ? ("portals" as const)
+      : tab === "yaml" || tab === "targeting"
+        ? ("yaml" as const)
+        : ("resume" as const);
+
   const [profile, cvMd] = await Promise.all([readProfile(), readCvMd()]);
   return (
     <>
       <PageHeader
         title="Profile & résumé"
-        description="Edit targeting metadata (YAML) and your résumé narrative (cv.md). Updating both keeps tailored ATS + full-length CVs and cover letters aligned with your latest experience."
+        description="Edit targeting, your résumé, and ATS job boards. Keeping these current keeps scans, chat search, and tailored CVs aligned with you."
       />
       <div className="px-8 py-6 max-w-4xl">
-        <ProfileResumeEditor initial={profile} initialCvMarkdown={cvMd} />
+        <ProfileResumeEditor
+          initial={profile}
+          initialCvMarkdown={cvMd}
+          defaultTab={defaultTab}
+        />
       </div>
     </>
   );

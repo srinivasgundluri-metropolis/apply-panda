@@ -1,16 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { Loader2, Search } from "lucide-react";
+import Link from "next/link";
+import { Info, Loader2, Search } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SseStream } from "@/components/sse-stream";
 
 /**
- * "Scan portals" tab — runs `node scan.mjs` and streams stdout. Triggers
- * on button click rather than auto-start so the user can see what the
- * scan is about to do (and what data sources it queries).
+ * Pipeline tab — calls `/api/scan/run` (SSE) to fetch ATS boards and persist new rows to scan_history.
  */
 export function ScanRunner() {
   const [running, setRunning] = React.useState(false);
@@ -18,19 +17,32 @@ export function ScanRunner() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="rounded-lg border bg-muted/30 px-4 py-3 flex gap-3 text-sm text-muted-foreground">
+        <Info className="size-4 shrink-0 text-foreground/70 mt-0.5" aria-hidden />
+        <p className="min-w-0 leading-relaxed">
+          Boards must be saved under{" "}
+          <Link
+            href="/profile?tab=boards"
+            className="text-foreground font-medium underline underline-offset-2 hover:text-primary"
+          >
+            Profile → ATS job boards
+          </Link>
+          . If a run fails with a configuration message, open that section, paste valid JSON, and save
+          before trying again.
+        </p>
+      </div>
       <Card className="px-6 py-5 gap-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 max-w-xl">
-            <p className="font-medium">Scan configured portals</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Hits Greenhouse / Ashby / Lever public APIs for every company in{" "}
-              <code className="text-xs">portals.yml</code> using your{" "}
-              <code className="text-xs">title_filter</code>. New listings sync to{" "}
-              Scan results (hosted <code className="text-xs">scan_history</code>) with{" "}
-              <Badge variant="outline" className="text-[10px] mx-1">
+            <p className="font-medium text-base">Scan job boards</p>
+            <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+              Queries Greenhouse, Ashby, and Lever for every company in your saved board list, applies
+              your title include/exclude rules, then writes new postings to{" "}
+              <strong>Scan results</strong> with status{" "}
+              <Badge variant="outline" className="text-[10px] mx-0.5 align-middle">
                 added
-              </Badge>{" "}
-              status.
+              </Badge>
+              . Existing URLs are skipped.
             </p>
           </div>
           <Button
@@ -55,7 +67,7 @@ export function ScanRunner() {
         <SseStream
           key={bumpKey}
           url="/api/scan/run"
-          label="Scanning portals"
+          label="Board scan"
           onDone={() => setRunning(false)}
           onError={() => setRunning(false)}
         />

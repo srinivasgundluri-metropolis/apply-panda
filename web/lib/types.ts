@@ -150,7 +150,7 @@ export interface AddToScanResult {
   error?: string | null;
 }
 
-/** Same shape as root `portals.yml` — stored per user in `profiles.data.portals`. */
+/** Same JSON shape as career-ops `portals.yml`; stored on the signed-in user profile. */
 export interface PortalsTrackedCompany {
   name?: string;
   enabled?: boolean;
@@ -198,7 +198,7 @@ export interface Profile {
   narrative?: ProfileNarrative;
   language?: ProfileLanguage;
   comp_targets?: Record<string, unknown>;
-  /** Per-user portal scanner config; `null` clears it (scan/search require valid JSON saved again). */
+  /** ATS board list for scans and chat search; `null` clears it until you save valid JSON again. */
   portals?: PortalsYamlConfig | null;
   [key: string]: unknown;
 }

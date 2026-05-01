@@ -16,9 +16,11 @@ import {
 } from "@/lib/hosted-tailor-html";
 import type { Browser } from "puppeteer-core";
 import { htmlToPdfWithBrowser, launchPdfBrowser } from "@/lib/pdf-from-html";
+import { hostedHtmlToDocxBuffer } from "@/lib/docx-from-html";
 import {
   slugTailoredSegment,
   uploadUserPdf,
+  uploadUserTailoredDocx,
   uploadUserTailoredHtml,
 } from "@/lib/tailored-docs-storage";
 
@@ -163,16 +165,24 @@ export async function POST(req: NextRequest) {
   const skipPdfEnv = ["1", "true", "yes"].includes(
     (process.env.APPLYPANDA_SKIP_PDF ?? "").trim().toLowerCase(),
   );
+  const skipDocxEnv = ["1", "true", "yes"].includes(
+    (process.env.APPLYPANDA_SKIP_DOCX ?? "").trim().toLowerCase(),
+  );
   if (skipPdfEnv) {
     log.push(
       "ℹ️ APPLYPANDA_SKIP_PDF is set — skipping headless Chrome; saving printable HTML only.",
+    );
+  }
+  if (skipDocxEnv) {
+    log.push(
+      "ℹ️ APPLYPANDA_SKIP_DOCX is set — skipping Word export.",
     );
   }
 
   /** TS flow analysis ignores assignments nested in `saveTailored`; use `.current`. */
   const pdfBrowserRef: { current: Browser | null } = { current: null };
 
-  /** Save PDF when Chromium works; otherwise upload printable HTML (same basename `.html`). */
+  /** Save PDF when Chromium works (else HTML); also produce .docx from the same HTML when possible. */
   const saveTailored = async (args: {
     html: string;
     pdfStoragePath: string;
@@ -181,7 +191,7 @@ export async function POST(req: NextRequest) {
     kind: "cv" | "cl";
     metadata: Record<string, unknown>;
     logTag: string;
-  }): Promise<string> => {
+  }): Promise<{ artifactPath: string; docxPath: string | null }> => {
     const {
       html,
       pdfStoragePath,
@@ -192,8 +202,33 @@ export async function POST(req: NextRequest) {
       logTag,
     } = args;
     const htmlStoragePath = pdfStoragePath.replace(/\.pdf$/i, ".html");
+    const docxStoragePath = pdfStoragePath.replace(/\.pdf$/i, ".docx");
+    const docxDisplayName = pdfDisplayName.replace(/\.pdf$/i, ".docx");
 
-    const saveHtml = async (reason: string) => {
+    const tryDocx = async (): Promise<string | null> => {
+      if (skipDocxEnv) return null;
+      try {
+        const buf = await hostedHtmlToDocxBuffer(html);
+        await uploadUserTailoredDocx({
+          supabase: auth.supabase,
+          userId: uid,
+          storagePath: docxStoragePath,
+          buffer: buf,
+          displayName: docxDisplayName,
+          kind,
+          metadata: { ...metadata, format: "docx" },
+        });
+        log.push(`✓ Saved ${logTag} DOCX → ${docxStoragePath}`);
+        return docxStoragePath;
+      } catch (e) {
+        log.push(`⚠️ DOCX (${logTag}): ${(e as Error).message}`);
+        return null;
+      }
+    };
+
+    const saveHtml = async (
+      reason: string,
+    ): Promise<{ artifactPath: string; docxPath: string | null }> => {
       log.push(`→ ${reason} — ${logTag}: saving printable HTML (${htmlDisplayName})`);
       await uploadUserTailoredHtml({
         supabase: auth.supabase,
@@ -208,7 +243,8 @@ export async function POST(req: NextRequest) {
         },
       });
       log.push(`✓ Saved ${logTag} HTML → ${htmlStoragePath}`);
-      return htmlStoragePath;
+      const docxPath = await tryDocx();
+      return { artifactPath: htmlStoragePath, docxPath };
     };
 
     if (skipPdfEnv) {
@@ -236,7 +272,8 @@ export async function POST(req: NextRequest) {
         metadata: { ...metadata, format: "pdf" },
       });
       log.push(`✓ Saved ${logTag} PDF → ${pdfStoragePath}`);
-      return pdfStoragePath;
+      const docxPath = await tryDocx();
+      return { artifactPath: pdfStoragePath, docxPath };
     } catch (e) {
       log.push(
         `⚠️ PDF rendering failed for ${logTag}: ${(e as Error).message}`,
@@ -247,8 +284,11 @@ export async function POST(req: NextRequest) {
 
   try {
     let atsStorage: string | null = null;
+    let atsDocxStorage: string | null = null;
     let fullStorage: string | null = null;
+    let fullDocxStorage: string | null = null;
     let clStorage: string | null = null;
+    let clDocxStorage: string | null = null;
 
     if (kind === "cv" || kind === "both") {
       log.push("→ Generating ATS HTML (model)…");
@@ -269,7 +309,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      atsStorage = await saveTailored({
+      const atsOut = await saveTailored({
         html: atsHtml,
         pdfStoragePath: `${basePath}-ats.pdf`,
         pdfDisplayName: `${company} · ${role} · ATS CV.pdf`,
@@ -282,8 +322,10 @@ export async function POST(req: NextRequest) {
         },
         logTag: "ATS CV",
       });
+      atsStorage = atsOut.artifactPath;
+      atsDocxStorage = atsOut.docxPath;
 
-      fullStorage = await saveTailored({
+      const fullOut = await saveTailored({
         html: fullHtml,
         pdfStoragePath: `${basePath}-full.pdf`,
         pdfDisplayName: `${company} · ${role} · Full CV.pdf`,
@@ -296,6 +338,8 @@ export async function POST(req: NextRequest) {
         },
         logTag: "full CV",
       });
+      fullStorage = fullOut.artifactPath;
+      fullDocxStorage = fullOut.docxPath;
     }
 
     if (kind === "cl" || kind === "both") {
@@ -308,7 +352,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      clStorage = await saveTailored({
+      const clOut = await saveTailored({
         html: clHtml,
         pdfStoragePath: `${basePath}-cover.pdf`,
         pdfDisplayName: `${company} · ${role} · Cover letter.pdf`,
@@ -320,6 +364,8 @@ export async function POST(req: NextRequest) {
         },
         logTag: "cover letter",
       });
+      clStorage = clOut.artifactPath;
+      clDocxStorage = clOut.docxPath;
     }
 
     const appPatch: Record<string, unknown> = {
@@ -330,12 +376,21 @@ export async function POST(req: NextRequest) {
       appPatch.cv_ats_path = atsStorage;
       appPatch.has_cv_ats = true;
     }
+    if (atsDocxStorage) {
+      appPatch.cv_ats_docx_path = atsDocxStorage;
+    }
     if (fullStorage) {
       appPatch.cv_full_path = fullStorage;
       appPatch.has_cv_full = true;
     }
+    if (fullDocxStorage) {
+      appPatch.cv_full_docx_path = fullDocxStorage;
+    }
     if (clStorage) {
       appPatch.cl_path = clStorage;
+    }
+    if (clDocxStorage) {
+      appPatch.cl_docx_path = clDocxStorage;
     }
 
     const { error: upApp } = await auth.supabase
@@ -350,7 +405,7 @@ export async function POST(req: NextRequest) {
 
     log.push("");
     log.push(
-      "✅ Done — files are under Documents / tracker downloads (PDF if Chromium worked; otherwise printable HTML — open → Print → Save as PDF).",
+      "✅ Done — files are under Documents / tracker (PDF and/or DOCX/HTML per environment; HTML → Print → Save as PDF if needed).",
     );
     return sseFromText(log.join("\n"), 0);
   } catch (e) {

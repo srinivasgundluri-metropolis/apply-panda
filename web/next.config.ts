@@ -17,7 +17,11 @@ const nextConfig: NextConfig = {
   },
   ...(onVercel ? { outputFileTracingRoot: repoRoot } : {}),
   // Headless Chromium (PDF) — avoid bundling issues on serverless bundles.
-  serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium"],
+  serverExternalPackages: [
+    "puppeteer-core",
+    "@sparticuz/chromium",
+    "html-to-docx",
+  ],
   // Next output tracing often skips binary assets; Sparticuz needs `bin/*.br`.
   outputFileTracingIncludes: {
     "/api/docs/generate": [

@@ -128,11 +128,27 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
             </a>
           </Button>
         ) : null}
+        {row.cvAtsDocxDownload ? (
+          <Button asChild variant="outline" size="sm">
+            <a href={row.cvAtsDocxDownload} download>
+              <Download className="size-4" />
+              ATS Word
+            </a>
+          </Button>
+        ) : null}
         {row.cvFullDownload ? (
           <Button asChild variant="secondary" size="sm">
             <a href={row.cvFullDownload} download>
               <Download className="size-4" />
               Full CV
+            </a>
+          </Button>
+        ) : null}
+        {row.cvFullDocxDownload ? (
+          <Button asChild variant="outline" size="sm">
+            <a href={row.cvFullDocxDownload} download>
+              <Download className="size-4" />
+              Full Word
             </a>
           </Button>
         ) : null}
@@ -165,7 +181,16 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
               Download Cover Letter
             </a>
           </Button>
-        ) : (
+        ) : null}
+        {row.clDocxDownload ? (
+          <Button asChild variant="outline" size="sm">
+            <a href={row.clDocxDownload} download>
+              <Download className="size-4" />
+              Cover Letter (Word)
+            </a>
+          </Button>
+        ) : null}
+        {!(row.hasCl && row.clDownload) ? (
           <Button
             size="sm"
             onClick={() => trigger("cl")}
@@ -178,7 +203,7 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
             )}
             Generate Cover Letter
           </Button>
-        )}
+        ) : null}
         {!row.hasCvSuite || !row.hasCl ? (
           <Button
             size="sm"

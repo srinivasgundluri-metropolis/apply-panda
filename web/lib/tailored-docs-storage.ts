@@ -44,7 +44,7 @@ async function uploadTailoredArtifact(params: UploadTailoredArtifactParams) {
 
   if (upErr) {
     throw new Error(
-      `${contentType.includes("pdf") ? "PDF" : "File"} upload failed: ${upErr.message}. Ensure Storage policies allow ${userId}/ (see web/supabase/storage-documents-policies.sql).`,
+      `Upload failed (${contentType.split(";")[0]}): ${upErr.message}. Ensure Storage policies allow ${userId}/ (see web/supabase/storage-documents-policies.sql).`,
     );
   }
 
@@ -100,5 +100,22 @@ export async function uploadUserTailoredHtml(params: {
     kind: params.kind,
     metadata: params.metadata,
     contentType: "text/html; charset=utf-8",
+  });
+}
+
+/** Word-compatible tailored CV/cover (.docx) from hosted HTML conversion. */
+export async function uploadUserTailoredDocx(params: {
+  supabase: SupabaseClient;
+  userId: string;
+  storagePath: string;
+  buffer: Buffer;
+  displayName: string;
+  kind: "cv" | "cl";
+  metadata: Record<string, unknown>;
+}): Promise<void> {
+  return uploadTailoredArtifact({
+    ...params,
+    contentType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   });
 }

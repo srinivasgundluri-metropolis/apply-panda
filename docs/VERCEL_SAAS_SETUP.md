@@ -23,6 +23,9 @@ Set these in Vercel Project Settings -> Environment Variables:
 - `APPLYPANDA_ALLOWED_EMAILS` (comma-separated allowlist for access control)
 - `APPLYPANDA_LOCKDOWN` (optional, set `true` to force global 503 maintenance mode)
 - `APPLYPANDA_SKIP_PDF` (optional, `1` / `true` / `yes` — never start Chromium; tailor flow uploads **printable HTML** only; use when serverless PDF stays broken)
+- `APPLYPANDA_SKIP_DOCX` (optional — skip **`html-to-docx`** conversion; tracker won’t show Word buttons)
+
+New Supabase installs get `applications.cv_ats_docx_path`, `cv_full_docx_path`, `cl_docx_path` from `web/supabase/schema.sql`. **Existing** projects: run `web/supabase/alter-applications-docx-paths.sql` once in the SQL editor.
 - `SMTP_HOST` (optional)
 - `SMTP_PORT` (optional, default 587)
 - `SMTP_SECURE` (optional, `true`/`false`)

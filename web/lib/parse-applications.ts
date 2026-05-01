@@ -40,6 +40,9 @@ export async function readApplications(
     const report = reportNum && reportPath ? `[${reportNum}](${reportPath})` : "";
     const cvPath = (r.cv_path as string | null) ?? null;
     const clPath = (r.cl_path as string | null) ?? null;
+    const cvAtsDocxPath = (r.cv_ats_docx_path as string | null) ?? null;
+    const cvFullDocxPath = (r.cv_full_docx_path as string | null) ?? null;
+    const clDocxPath = (r.cl_docx_path as string | null) ?? null;
     const hasCvAts = Boolean(r.has_cv_ats);
     const hasCvFull = Boolean(r.has_cv_full);
     const hasCvLegacyOnly = Boolean(r.has_cv_legacy_only);
@@ -74,10 +77,19 @@ export async function readApplications(
       cvPath,
       clPath,
       cvDownload: cvPath ? apiFileHref(cvPath) : null,
-      cvAtsDownload: (r.cv_ats_path as string | null) ? apiFileHref(String(r.cv_ats_path)) : null,
-      cvFullDownload: (r.cv_full_path as string | null) ? apiFileHref(String(r.cv_full_path)) : null,
-      cvLegacyDownload: (r.cv_legacy_path as string | null) ? apiFileHref(String(r.cv_legacy_path)) : null,
+      cvAtsDownload: (r.cv_ats_path as string | null)
+        ? apiFileHref(String(r.cv_ats_path))
+        : null,
+      cvFullDownload: (r.cv_full_path as string | null)
+        ? apiFileHref(String(r.cv_full_path))
+        : null,
+      cvLegacyDownload: (r.cv_legacy_path as string | null)
+        ? apiFileHref(String(r.cv_legacy_path))
+        : null,
+      cvAtsDocxDownload: cvAtsDocxPath ? apiFileHref(cvAtsDocxPath) : null,
+      cvFullDocxDownload: cvFullDocxPath ? apiFileHref(cvFullDocxPath) : null,
       clDownload: clPath ? apiFileHref(clPath) : null,
+      clDocxDownload: clDocxPath ? apiFileHref(clDocxPath) : null,
       derivedStatus,
       derivedHint,
     } as ApplicationRow;

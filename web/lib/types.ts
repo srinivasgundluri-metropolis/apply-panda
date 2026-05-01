@@ -69,7 +69,11 @@ export interface ApplicationRow {
   cvAtsDownload: string | null;
   cvFullDownload: string | null;
   cvLegacyDownload: string | null;
+  /** Optional Word companion for ATS CV (.docx). */
+  cvAtsDocxDownload: string | null;
+  cvFullDocxDownload: string | null;
   clDownload: string | null;
+  clDocxDownload: string | null;
   /** UI-only — derived label like "🎯 Ready to Apply" */
   derivedStatus: string;
   derivedHint: string;

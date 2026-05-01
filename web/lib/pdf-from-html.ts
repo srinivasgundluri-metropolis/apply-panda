@@ -43,7 +43,12 @@ export async function htmlToPdfWithBrowser(
 ): Promise<Buffer> {
   const page = await browser.newPage();
   try {
-    await page.setContent(html, { waitUntil: "networkidle0", timeout: 90_000 });
+    // Avoid networkidle0: static tailor HTML rarely needs idle; idle often
+    // times out under serverless Puppeteer while remote fonts spin.
+    await page.setContent(html, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
     const pdf = await page.pdf({
       format: "Letter",
       printBackground: true,

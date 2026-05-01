@@ -48,11 +48,16 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
     setBumpKey((k) => k + 1);
   };
 
-  const onDone = (_fullText: string, exitCode: number) => {
+  const onDone = (fullText: string, exitCode: number) => {
     setPending(null);
     if (exitCode !== 0) {
+      const lines = fullText.trim().split("\n").filter(Boolean);
+      const warned = [...lines].reverse().find((l) => l.includes("⚠️"));
+      const snippet = (warned ?? lines.at(-1) ?? "").slice(0, 200);
       toast.error(
-        "Generation failed or stopped early — scroll the stream for details.",
+        snippet
+          ? `Generation failed: ${snippet}`
+          : "Generation failed or stopped early — scroll the stream for details.",
       );
       return;
     }

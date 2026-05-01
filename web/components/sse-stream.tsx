@@ -122,11 +122,7 @@ export function SseStream({
       const decoder = new TextDecoder();
       let buffer = "";
 
-      while (!cancelled) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        // SSE frames are delimited by a blank line.
+      const consumeFrames = (): void => {
         const frames = buffer.split(/\n\n/);
         buffer = frames.pop() ?? "";
         for (const frame of frames) {
@@ -157,7 +153,8 @@ export function SseStream({
           } else if (event.type === "phase") {
             setState((s) => ({ ...s, phase: event.data }));
           } else if (event.type === "done") {
-            const code = event.exitCode;
+            const code =
+              typeof event.exitCode === "number" ? event.exitCode : 1;
             setState((s) => ({
               ...s,
               status: code === 0 ? "done" : "error",
@@ -177,6 +174,27 @@ export function SseStream({
             onError?.(event.message);
           }
         }
+      };
+
+      while (!cancelled) {
+        const { value, done } = await reader.read();
+        if (value?.length) {
+          buffer += decoder.decode(value, { stream: true });
+          consumeFrames();
+        }
+        if (done) {
+          // Flush any pending multi-byte Unicode so the trailing `done` SSE
+          // frame can parse correctly.
+          buffer += decoder.decode();
+          consumeFrames();
+          break;
+        }
+      }
+
+      // Rare: last frame lacked a terminating blank line — try one more pass.
+      if (buffer.trim().length && !cancelled) {
+        buffer += "\n\n";
+        consumeFrames();
       }
     })();
 

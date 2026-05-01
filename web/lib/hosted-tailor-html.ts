@@ -119,9 +119,20 @@ export function extractHostedHtmlBlock(text: string): string | null {
   const start = i + open.length;
   const j = text.indexOf(close, start);
   const raw = (j === -1 ? text.slice(start) : text.slice(start, j)).trim();
-  let html = raw.replace(/^```(?:html)?\s*/i, "").replace(/```\s*$/i, "").trim();
-  if (!html.startsWith("<!DOCTYPE") && !html.toLowerCase().startsWith("<html")) {
-    return null;
-  }
+  let html = raw
+    .replace(/^\uFEFF/, "")
+    .replace(/^```(?:html)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+
+  const lower = html.toLowerCase();
+  const docIdx = lower.indexOf("<!doctype");
+  const htmlIdx = lower.search(/<html\b/);
+  if (docIdx === -1 && htmlIdx === -1) return null;
+  const sliceFrom =
+    docIdx !== -1 && (htmlIdx === -1 || docIdx <= htmlIdx) ? docIdx : htmlIdx;
+  html = html.slice(sliceFrom).trimStart();
+
+  if (!/^<!DOCTYPE/i.test(html) && !/^<html\b/i.test(html)) return null;
   return html;
 }

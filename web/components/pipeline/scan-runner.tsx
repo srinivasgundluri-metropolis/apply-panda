@@ -1,16 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { Loader2, Search } from "lucide-react";
+import Link from "next/link";
+import { Info, Loader2, Search } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SseStream } from "@/components/sse-stream";
 
 /**
- * "Scan portals" tab — runs `node scan.mjs` and streams stdout. Triggers
- * on button click rather than auto-start so the user can see what the
- * scan is about to do (and what data sources it queries).
+ * Pipeline tab — calls `/api/scan/run` (SSE) to fetch ATS boards and persist new rows to scan_history.
+ * Backend is HTTP-only (`portal-scan.ts`); LLM is reserved for Chat, docs, evaluation, etc.
  */
 export function ScanRunner() {
   const [running, setRunning] = React.useState(false);
@@ -18,19 +18,36 @@ export function ScanRunner() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="rounded-lg border bg-muted/30 px-4 py-3 flex gap-3 text-sm text-muted-foreground">
+        <Info className="size-4 shrink-0 text-foreground/70 mt-0.5" aria-hidden />
+        <p className="min-w-0 leading-relaxed">
+          Title and location filters come from{" "}
+          <Link
+            href="/profile?tab=yaml"
+            className="text-foreground font-medium underline underline-offset-2 hover:text-primary"
+          >
+            Profile → Targeting
+          </Link>{" "}
+          (primary/secondary roles, archetypes, and candidate location).           Employer boards come from your Profile employer picker (stored like{" "}
+          <code className="rounded bg-muted px-1 py-px text-[11px]">portals.yml</code>{" "}
+          <code className="rounded bg-muted px-1 py-px text-[11px]">tracked_companies</code>). Each run ranks
+          matches by recency when the ATS exposes dates and
+          saves up to 100 newest URLs to Scan results (skipping ones you already stored).
+        </p>
+      </div>
       <Card className="px-6 py-5 gap-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 max-w-xl">
-            <p className="font-medium">Scan configured portals</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Hits Greenhouse / Ashby / Lever / Workday public APIs for every
-              company in <code className="text-xs">portals.yml</code> with
-              zero LLM cost. New offers are appended to{" "}
-              <code className="text-xs">scan-history.tsv</code> with{" "}
-              <Badge variant="outline" className="text-[10px] mx-1">
+            <p className="font-medium text-base">Scan job boards</p>
+            <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+              Runs <strong className="text-foreground font-medium">without any LLM</strong> — direct ATS HTTP APIs only
+              (same idea as local <code className="rounded bg-muted px-1 py-px text-xs">scan.mjs</code>). Queries the built-in ATS board list using your profile targeting lines, ranks matches by newest
+              timestamps where available, then writes up to 100 postings to{" "}
+              <strong>Scan results</strong>{" "}
+              <Badge variant="outline" className="text-[10px] mx-0.5 align-middle">
                 added
-              </Badge>{" "}
-              status.
+              </Badge>
+              . URLs already on file are skipped.
             </p>
           </div>
           <Button
@@ -55,7 +72,7 @@ export function ScanRunner() {
         <SseStream
           key={bumpKey}
           url="/api/scan/run"
-          label="Scanning portals"
+          label="Board scan"
           onDone={() => setRunning(false)}
           onError={() => setRunning(false)}
         />

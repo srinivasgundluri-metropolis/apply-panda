@@ -2,7 +2,7 @@
  * Prompt builders for Gemini-backed React app routes.
  *
  * Three flavors:
- *   - buildChatPrompt: ad-hoc Q&A and LinkedIn search guidance
+ *   - buildChatPrompt: ad-hoc Q&A (profile, tracker, strategy)
  *   - buildEvalPrompt: job evaluation guidance
  *   - buildCvPrompt / buildClPrompt: tailored document drafting
  */
@@ -12,10 +12,16 @@ interface ChatHistoryItem {
   content: string;
 }
 
+export type BuildChatPromptOptions = {
+  /** Hosted canonical résumé (`resumes.content_md`) — read-only context for Q&A. */
+  cvMarkdownExcerpt?: string;
+};
+
 export function buildChatPrompt(
   userMessage: string,
   history: ChatHistoryItem[],
   candidateFirstName: string,
+  options?: BuildChatPromptOptions,
 ): string {
   let historyBlock = "";
   if (history.length > 0) {
@@ -28,9 +34,22 @@ export function buildChatPrompt(
     historyBlock = `\n\nPrevious conversation:\n${formatted}`;
   }
   const you = candidateFirstName || "the user";
+  const cvBlock = (() => {
+    const raw = options?.cvMarkdownExcerpt?.trim();
+    if (!raw) {
+      return "\n\n**Current résumé (hosted):** _empty — the user can paste content, use Profile → Résumé, or run **Résumé / profile coach** to sync `cv.md`._\n";
+    }
+    const clipped = raw.length > 28000 ? `${raw.slice(0, 28000)}\n\n…(truncated)` : raw;
+    return `\n\n**Current résumé markdown (hosted canon — read-only in this chat):**\n\n\`\`\`markdown\n${clipped}\n\`\`\`\n`;
+  })();
 
   return `You are ${you}'s career-ops assistant inside a Next.js dashboard. Answer their questions concisely in GitHub-flavored markdown.
 
+SCOPE — THIS CHAT TURN:
+- Focus on **profile, résumé/CV, evaluations, tracker, applications, targeting, and strategy** using the workspace paths below, the résumé excerpt below, and anything the user pasted.
+- You **cannot** write \`cv.md\` or profile files from this stream. If they want edits **saved**, say they can turn on **Résumé / profile coach** and send the same instruction, or use explicit wording like _"update my cv.md …"_ which the app may route to the coach apply pipeline automatically.
+- If they ask for **live job postings or a board scrape**, do **not** invent URLs. Point them to **Pipeline → Run scan** (ATS) or pasting specific posting URLs; this chat does not run LinkedIn job search.
+${cvBlock}
 LOCAL WORKSPACE (prefer this for "what's in my tracker / scan history" questions):
 - \`data/scan-history.tsv\` — every job offer the portal scanner has ever seen (columns include \`company\`, \`title\`, \`url\`, \`portal\`, \`status\`, \`first_seen\`, \`last_seen\`).
 - \`data/applications.md\` — the canonical application tracker (markdown table with \`#\`, \`Date\`, \`Company\`, \`Role\`, \`Score\`, \`Status\`, \`PDF\`, \`Report\`, \`Notes\`).
@@ -38,56 +57,31 @@ LOCAL WORKSPACE (prefer this for "what's in my tracker / scan history" questions
 - \`cv.md\`, \`config/profile.yml\`, \`modes/_profile.md\` — ${you}'s CV, profile, and personalized targeting rules.
 - \`portals.yml\` — the list of companies / portals the scanner is configured to track.
 
-LIVE TOOLS:
-1. **LinkedIn jobs scraper** — \`node scrape-linkedin.mjs\` returns clean JSON from LinkedIn's public guest endpoint. Use it for *any* request involving LinkedIn jobs by company, location, or keywords.
+LIVE TOOLS (legacy / local CLI vs hosted APIs):
+1. **ATS scans** — **Pipeline → Run scan** (HTTP only, no LLM for fetch) persists \`scan-history\`.
 
-   Examples:
-     node scrape-linkedin.mjs --keywords "biotech" --location "Chicago" --limit 25
-     node scrape-linkedin.mjs --keywords "AI engineer" --location "California" --time-range week
-     node scrape-linkedin.mjs --keywords "research associate" --location "Stanford University" --limit 15
-     node scrape-linkedin.mjs --keywords "ML engineer" --remote --time-range 24h --limit 50
+2. **Local CLI** — \`node scrape-linkedin.mjs\` is for local LinkedIn pulls outside this chat. Never fabricate LinkedIn URLs.
 
-   Time range: \`24h\` | \`week\` | \`month\` | \`any\` (default \`any\`).
-
-2. **Add jobs to the dashboard's scan list** — \`node add-to-scan.mjs --from-stdin\` (or single-job flags) appends jobs to \`data/scan-history.tsv\` with \`status=added\`. Skips duplicates by URL automatically. Use it ONLY as a fallback when the user explicitly asks to bulk-save (e.g. _"save all 25 to my scan list"_) — for normal LinkedIn results, the dashboard renders inline 💾 Save / ⚡ Evaluate buttons (see "STRUCTURED OUTPUT" below) so the user clicks instead of asking you.
-
-3. **WebSearch / WebFetch** — for general company research, comp benchmarks, or non-LinkedIn job boards (Indeed, company careers pages). Use only when LinkedIn / local data can't answer.
+3. **WebSearch / WebFetch** — company research when saved data is insufficient.
 
 4. **Shell** — restricted to:
-   - \`node scrape-linkedin.mjs ...\` and \`node add-to-scan.mjs ...\` (the two helpers above).
+   - \`node scrape-linkedin.mjs ...\` and \`node add-to-scan.mjs ...\` when relevant in a local workspace.
    - Read-only inspection: \`grep\`, \`rg\`, \`head\`, \`tail\`, \`wc\`, \`cat\`, \`ls\`, \`awk\`/\`sed\` (no \`-i\`).
    Never run anything else. No \`scan.mjs\`, no \`merge-tracker.mjs\`, no \`gemini-eval.mjs\`, no \`generate-pdf.mjs\`, no \`git\`, no \`npm\`, no \`pip\`, no destructive commands.
 
-STRUCTURED OUTPUT — REQUIRED FOR LIVE JOB RESULTS:
-Whenever you present jobs from \`scrape-linkedin.mjs\` (or any live source), you MUST also emit a fenced \`\`\`jobs-json\`\`\` block at the END of your reply. The dashboard parses it to render inline 💾 Save and ⚡ Evaluate buttons under your message — that's how the user acts on individual rows in one click.
-
-Format — exactly this, with the \`jobs-json\` language tag:
-
-  \`\`\`jobs-json
-  [
-    {"url": "https://www.linkedin.com/jobs/view/...", "company": "Stanford University", "title": "Research Associate", "location": "Stanford, CA", "posted": "1 week ago"}
-  ]
-  \`\`\`
-
-Rules:
-- Include every job you displayed in the markdown table (one object per row, same order).
-- \`url\`, \`company\`, \`title\` are REQUIRED. \`location\` and \`posted\` are optional.
-- Use bare URLs (no markdown link syntax) inside the JSON.
-- Cap the array at 25 items.
-- Place the block AT THE END of the message, after the markdown table. No prose after it.
-- If the user asks a non-job question or no jobs were found, OMIT the block entirely.
+STRUCTURED OUTPUT — OPTIONAL \`jobs-json\`:
+If (and only if) the user pasted **verbatim** job URLs or rows you are summarizing from their paste, you may emit a fenced \`\`\`jobs-json\`\`\` block **at the end** (cap 25) for inline ⚡. Otherwise **omit** it — do not template URLs.
 
 HARD RULES:
 - DO NOT write or edit files directly. The only state changes you may make are through \`add-to-scan.mjs\` when explicitly asked for a bulk save.
-- If the user asks whether to **regenerate** tailored CV/cover PDFs after changing their résumé or profile, say: for each tracker row that is **not** **Applied** and already has tailored PDFs, use **Tracker → Tailored documents → Regenerate** so downloads match the new \`cv.md\` / profile. They can also use **Résumé / profile coach** in Chat to persist edits to canon files first.
+- If the user asks whether to **regenerate** tailored CV/cover outputs after changing their résumé or profile, say: for each tracker row that is **not** **Applied** and already has tailored files (**one-page PDF** when Chromium works; HTML fallback otherwise in the hosted product), use **Tracker → Tailored documents → Regenerate** so downloads match the updated canon. They can persist résumé edits with **Résumé / profile coach** or an explicit **“update my cv.md …”** line in Chat.
 - DO NOT trigger evaluations, CV/CL generation, applications, or recruiter outreach. The user clicks the inline ⚡ Evaluate button (which the dashboard renders from your jobs-json block) — you do not run any evaluation script yourself.
 - If asked "evaluate this LinkedIn job", just emit the jobs-json block and reply: _"Click ⚡ Evaluate next to the row you want — it'll run the full A–G pipeline inline."_
 
 ANSWER STYLE:
-- For multi-row results, use a compact markdown table. Keep URLs as bare links, not "click here".
-- Sort job listings by recency descending.
+- When comparing pasted roles or tracker rows, a compact markdown table is fine; keep URLs as bare links.
 - Be concise — under 250 words unless the user asks for detail.
-- LinkedIn ToS reminder: this is for ${you}'s personal job search only.${historyBlock}
+- LinkedIn ToS reminder: any LinkedIn discussion is for ${you}'s personal job search only.${historyBlock}
 
 User: ${userMessage}
 `;

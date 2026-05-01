@@ -39,6 +39,7 @@ export default async function DocumentsPage() {
 
   let cvs: OutputFile[] = [];
   let cls: OutputFile[] = [];
+  let drafts: OutputFile[] = [];
   let cvMd = "";
   if (user) {
     const [{ data: docs }, { data: resume }] = await Promise.all([
@@ -63,22 +64,23 @@ export default async function DocumentsPage() {
     }));
     cvs = all.filter((f) => f.kind === "cv");
     cls = all.filter((f) => f.kind === "cl");
+    drafts = all.filter((f) => f.kind === "draft");
   }
 
   return (
     <>
       <PageHeader
         title="CVs & Documents"
-        description="Every tailored CV and cover letter that the agent has generated, plus your master CV markdown."
+        description="Tailored CVs and cover letters from the Tracker are rendered to one-page PDFs (Letter) when Chromium is available, with printable HTML as fallback. Older Markdown-only runs may appear under drafts. Your master résumé is in the cv.md tab."
       />
 
       <div className="px-8 py-6">
         <Tabs defaultValue="generated" className="gap-6">
           <TabsList>
             <TabsTrigger value="generated">
-              Generated PDFs
+              Generated files
               <span className="ml-1.5 text-[10px] opacity-70">
-                {cvs.length + cls.length}
+                {cvs.length + cls.length + drafts.length}
               </span>
             </TabsTrigger>
             <TabsTrigger value="cv-md">cv.md</TabsTrigger>
@@ -95,7 +97,13 @@ export default async function DocumentsPage() {
               title="Cover Letters"
               icon={Mail}
               files={cls}
-              empty="No cover letters yet — generate one from the Tracker."
+              empty="No cover letters yet — generate from the Tracker (PDF or HTML fallback)."
+            />
+            <DocSection
+              title="Markdown drafts (Tailored docs)"
+              icon={FileText}
+              files={drafts}
+              empty="No drafts yet — open **Tracker → Tailored documents**, run Generate, and wait for the stream to finish (we save the model output as Markdown)."
             />
           </TabsContent>
 

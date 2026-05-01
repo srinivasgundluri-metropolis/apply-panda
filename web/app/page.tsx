@@ -30,7 +30,7 @@ const FEATURES = [
     icon: Search,
     title: "Portal Scanner",
     description:
-      "Hits Greenhouse / Ashby / Lever / Workday public APIs directly with zero LLM cost. Filters offers by your target roles before they hit your tracker.",
+      "Hits Greenhouse, Ashby, Lever, and Workday CXS public JSON endpoints directly with zero LLM cost. Filters offers by your target roles before they hit your tracker.",
   },
   {
     icon: BarChart3,
@@ -204,6 +204,10 @@ export default async function LandingPage() {
           <span>·</span>
           <Link href="/privacy" className="underline">
             Privacy
+          </Link>
+          <span>·</span>
+          <Link href="/attribution" className="underline">
+            Attribution
           </Link>
           <span>·</span>
           <span>Hosted on Vercel · Auth + Supabase</span>

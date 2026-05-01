@@ -49,27 +49,31 @@ export interface ApplicationRow {
   /** apply URL — derived from the report header or scan-history, never persisted back */
   url: string;
   /**
-   * True when at least one tailored CV artifact exists on disk — legacy
-   * single PDF counts; pair of ATS + full counts.
+   * True when at least one tailored CV artifact exists — legacy single file
+   * counts; pair of ATS + full counts.
    */
   hasCv: boolean;
-  /** True when ATS + full variants both exist OR a legacy unnamed PDF exists. */
+  /** True when ATS + full variants both exist OR a legacy single tailored file exists. */
   hasCvSuite: boolean;
   hasCvAts: boolean;
   hasCvFull: boolean;
   hasCvLegacyOnly: boolean;
-  /** UI-only — whether tailored cover letter PDF was found on disk */
+  /** UI-only — whether a tailored cover letter artifact exists */
   hasCl: boolean;
   /** Relative path — prefer ATS for canonical “CV” chip; see also full/legacy URLs. */
   cvPath: string | null;
-  /** Relative path to cover letter PDF (under output/cover-letters/), if found. */
+  /** Relative path to cover letter in storage (`*.pdf` or fallback `*.html`). */
   clPath: string | null;
   /** Primary CV download URL (prefer ATS variant). */
   cvDownload: string | null;
   cvAtsDownload: string | null;
   cvFullDownload: string | null;
   cvLegacyDownload: string | null;
+  /** Legacy Word URLs only — cleared when user regenerates (HTML-only flow). */
+  cvAtsDocxDownload: string | null;
+  cvFullDocxDownload: string | null;
   clDownload: string | null;
+  clDocxDownload: string | null;
   /** UI-only — derived label like "🎯 Ready to Apply" */
   derivedStatus: string;
   derivedHint: string;
@@ -122,6 +126,21 @@ export interface LinkedInResponse {
   results: LinkedInResult[];
 }
 
+/** `POST /api/portals/search` — ATS boards + portals.yml filters. */
+export interface PortalSearchResponse {
+  query: { keywords: string; limit: number; company_filter?: string };
+  title_filter: { positive: string[]; negative: string[] };
+  /** Omitted on older cached client payloads — treat as no location filter */
+  location_filter?: { positive: string[]; negative: string[] };
+  companies_scanned: number;
+  stats: {
+    title_filtered_total: number;
+    keyword_matched_total: number;
+    returned: number;
+  };
+  results: LinkedInResult[];
+}
+
 /** Output shape of `node add-to-scan.mjs --from-stdin`. */
 export interface AddToScanResult {
   added: number;
@@ -135,6 +154,23 @@ export interface AddToScanResult {
     portal: string;
   }>;
   error?: string | null;
+}
+
+/** Same JSON shape as career-ops `portals.yml` subset: stored on the profile (`tracked_companies`, optional negatives / company_filter). */
+export interface PortalsTrackedCompany {
+  name?: string;
+  enabled?: boolean;
+  api?: string;
+  careers_url?: string;
+}
+
+export interface PortalsYamlConfig {
+  tracked_companies?: PortalsTrackedCompany[];
+  /** When set (case-insensitive substring), only boards whose catalog `name` matches are queried. */
+  company_filter?: string;
+  title_filter?: { positive?: string[]; negative?: string[] };
+  /** Same rules as titles: substring match on the job location string after fetch. */
+  location_filter?: { positive?: string[]; negative?: string[] };
 }
 
 /** Profile schema — mirrors `config/profile.yml`, all fields optional. */
@@ -172,6 +208,8 @@ export interface Profile {
   narrative?: ProfileNarrative;
   language?: ProfileLanguage;
   comp_targets?: Record<string, unknown>;
+  /** Employer boards (+ optional ATS negatives) synced from pasted `portals.yml`; merges with targeting for scans/chat. */
+  portals?: PortalsYamlConfig | null;
   [key: string]: unknown;
 }
 

@@ -67,12 +67,139 @@ export interface FetchJdResult {
   error?: string;
 }
 
+/** `https://jobs.ashbyhq.com/{slug}/{uuid}` posting pages — HTML is SPA shell; body comes from Ashby posting API. */
+function parseAshbyJobPostingUrl(
+  raw: string,
+): { boardSlug: string; postingId: string } | null {
+  try {
+    const u = new URL(raw.trim());
+    const host = u.hostname.replace(/^www\./i, "");
+    if (!/^jobs\.ashbyhq\.com$/i.test(host)) return null;
+    const segments = u.pathname.replace(/^\//, "").split("/").filter(Boolean);
+    if (segments.length < 2) return null;
+    const [, maybeUuid] = segments;
+    if (!/^[0-9a-f-]{36}$/i.test(maybeUuid)) return null;
+    return { boardSlug: segments[0], postingId: maybeUuid.toLowerCase() };
+  } catch {
+    return null;
+  }
+}
+
+/** Title-case hyphenated ATS slugs (“my-company”, “AlephAlpha” → readable label). */
+function humanizeOrgSlug(boardSlug: string): string {
+  return boardSlug
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((w) =>
+      /^[a-z0-9.]+$/i.test(w)
+        ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+        : w,
+    )
+    .join(" ");
+}
+
+type AshbyJobBoardJob = Record<string, unknown>;
+
+async function fetchAshbyPostingViaApi(params: {
+  boardSlug: string;
+  postingId: string;
+  timeoutMs: number;
+}): Promise<FetchJdResult> {
+  const { boardSlug, postingId: normalizedPostingId } = params;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), params.timeoutMs);
+  try {
+    const apiUrl = `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(boardSlug)}?includeCompensation=true`;
+    const resp = await fetch(apiUrl, {
+      headers: { "User-Agent": USER_AGENT },
+      signal: controller.signal,
+      redirect: "follow",
+    });
+    if (!resp.ok) {
+      return {
+        ok: false,
+        text: "",
+        error: `Ashby job board HTTP ${resp.status}: ${resp.statusText}`,
+      };
+    }
+    const json = (await resp.json()) as { jobs?: AshbyJobBoardJob[] };
+    const jobs = json.jobs ?? [];
+    const job = jobs.find(
+      (j) => String(j?.id ?? "").toLowerCase() === normalizedPostingId,
+    );
+    if (!job) {
+      return {
+        ok: false,
+        text: "",
+        error:
+          `No Ashby posting ${normalizedPostingId} on board “${boardSlug}”. It may be unlisted, closed, or the URL slug may differ (try the careers page slug).`,
+      };
+    }
+
+    const title = String(job.title ?? "").trim();
+    const descriptionPlain = String(job.descriptionPlain ?? "").trim();
+    const descriptionHtml = String(job.descriptionHtml ?? "");
+    const body =
+      descriptionPlain ||
+      (descriptionHtml ? stripHtml(descriptionHtml) : "");
+
+    if (!body) {
+      return {
+        ok: false,
+        text: "",
+        error: "Ashby posting has no description in the API response.",
+      };
+    }
+
+    const orgLabel = humanizeOrgSlug(boardSlug);
+    const department = String(job.department ?? "").trim();
+    const team = String(job.team ?? "").trim();
+    const location = String(job.location ?? "").trim();
+    const employmentType = String(job.employmentType ?? "").trim();
+    const workplaceType = String(job.workplaceType ?? "").trim();
+    const isRemote = typeof job.isRemote === "boolean" ? job.isRemote : null;
+
+    const metaLines: string[] = [
+      `Company: ${orgLabel}`,
+      `Title: ${title || "(no title)"}`,
+    ];
+    if (department) metaLines.push(`Department: ${department}`);
+    if (team) metaLines.push(`Team: ${team}`);
+    if (location) metaLines.push(`Location: ${location}`);
+    if (employmentType) metaLines.push(`Employment type: ${employmentType}`);
+    if (workplaceType)
+      metaLines.push(`Workplace: ${workplaceType}${isRemote === true ? " · Remote-eligible" : ""}`);
+    metaLines.push("");
+
+    const text = `${metaLines.join("\n")}\n${body}`.trim();
+    return { ok: true, text };
+  } catch (e) {
+    return {
+      ok: false,
+      text: "",
+      error: (e as Error).message || "Ashby fetch failed",
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function fetchJobDescription(
   url: string,
   timeoutMs = 15_000,
 ): Promise<FetchJdResult> {
   if (!url || !/^https?:\/\//i.test(url)) {
     return { ok: false, text: "", error: "Invalid URL" };
+  }
+  const ashbyPosting = parseAshbyJobPostingUrl(url);
+  if (ashbyPosting) {
+    return fetchAshbyPostingViaApi({
+      boardSlug: ashbyPosting.boardSlug,
+      postingId: ashbyPosting.postingId,
+      timeoutMs,
+    });
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

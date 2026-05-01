@@ -157,6 +157,21 @@ function pick(re, src) {
   return m ? m[1] : '';
 }
 
+function canonicalLinkedInJobUrl(rawHref) {
+  if (!rawHref) return '';
+  let u;
+  try {
+    u = new URL(rawHref, 'https://www.linkedin.com');
+  } catch {
+    return '';
+  }
+  const host = (u.hostname || '').toLowerCase();
+  if (!host.endsWith('linkedin.com')) return '';
+  const match = u.pathname.match(/\/jobs\/view\/(\d+)/i);
+  if (!match) return '';
+  return `https://www.linkedin.com/jobs/view/${match[1]}`;
+}
+
 function parseCards(html) {
   // Each result is a top-level <li> wrapping a base-card div. The guest
   // endpoint returns a list of these (no surrounding <ul>), so we slice on
@@ -201,7 +216,8 @@ function parseCards(html) {
       title: stripTags(title),
       company: stripTags(company),
       location: stripTags(loc),
-      url: href ? href.split('?')[0] : '',
+      // Only keep a URL when we have a real LinkedIn job id.
+      url: canonicalLinkedInJobUrl(href),
       posted_date: postedAbs || null,
       posted_relative: postedRel || null,
     });

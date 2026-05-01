@@ -1,30 +1,49 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { ProfileResumeEditor } from "@/components/profile/profile-resume-editor";
 import { readProfile } from "@/lib/profile";
-import { readFile, access } from "node:fs/promises";
-import { CV_PATH } from "@/lib/paths";
+import { requireUser } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 async function readCvMd(): Promise<string> {
   try {
-    await access(CV_PATH);
-    return await readFile(CV_PATH, "utf-8");
+    const { supabase, user } = await requireUser();
+    const { data, error } = await supabase
+      .from("resumes")
+      .select("content_md")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (error) throw error;
+    return String(data?.content_md ?? "");
   } catch {
     return "";
   }
 }
 
-export default async function ProfilePage() {
+export default async function ProfilePage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tab?: string }>;
+}) {
+  const tab = (searchParams ? await searchParams : {}).tab;
+  const defaultTab =
+    tab === "yaml" || tab === "targeting" || tab === "boards" || tab === "portals"
+      ? ("yaml" as const)
+      : ("resume" as const);
+
   const [profile, cvMd] = await Promise.all([readProfile(), readCvMd()]);
   return (
     <>
       <PageHeader
         title="Profile & résumé"
-        description="Edit targeting metadata (YAML) and your résumé narrative (cv.md). Updating both keeps tailored ATS + full-length CVs and cover letters aligned with your latest experience."
+        description="Edit targeting, pick employer ATS boards (or add URLs), and edit résumé. Role filters come from targeting; scans query the boards you select."
       />
       <div className="px-8 py-6 max-w-4xl">
-        <ProfileResumeEditor initial={profile} initialCvMarkdown={cvMd} />
+        <ProfileResumeEditor
+          initial={profile}
+          initialCvMarkdown={cvMd}
+          defaultTab={defaultTab}
+        />
       </div>
     </>
   );

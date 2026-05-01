@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchJobDescription } from "@/lib/fetch-jd";
+import { isUsableJobUrl } from "@/lib/job-url";
 import { requireApiUser } from "@/lib/supabase/api";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +16,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
   const url = (body.url ?? "").trim();
-  if (!url) {
-    return NextResponse.json({ error: "URL required" }, { status: 400 });
+  if (!isUsableJobUrl(url)) {
+    return NextResponse.json({ error: "Valid job URL required" }, { status: 400 });
   }
   const result = await fetchJobDescription(url);
   if (!result.ok) {

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Send, Loader2, Bot, UserRound, Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
@@ -12,12 +13,9 @@ import { JobActions } from "@/components/chat/job-actions";
 import { RecentSearches } from "@/components/chat/recent-searches";
 import { SseStream } from "@/components/sse-stream";
 import { extractJobsBlock } from "@/lib/jobs-block";
+import { isExplicitCvMarkdownEditRequest } from "@/lib/cv-edit-intent";
 import { cn } from "@/lib/utils";
-import type {
-  LinkedInResult,
-  RecentSearch,
-  SseEvent,
-} from "@/lib/types";
+import type { LinkedInResult, RecentSearch, SseEvent } from "@/lib/types";
 
 interface ChatPanelProps {
   candidateFirst: string;
@@ -38,16 +36,35 @@ const RECENT_KEY = "career-ops:recent-searches";
 const HISTORY_KEY = "career-ops:chat-history";
 
 const SUGGESTED_PROMPTS = [
-  "Find biotech roles in Chicago posted this week",
-  "Show me ML engineer jobs at Stanford University",
-  "What's in my scan history under 'AI' last 14 days?",
-  "Summarize my last 3 evaluation reports",
+  "Update my cv.md Summary to three short lines emphasizing platform ML and one quantified win from my last role",
+  "Given my profile, suggest a sharper LinkedIn About section (3 short paragraphs)",
+  "Which roles in my tracker are still Evaluated vs Applied — what should I do next?",
+  "How should I tighten my target_roles vs my last three evaluations?",
+  "What negotiation angles should I prep if I get to offer stage?",
 ];
 
-const COACH_PROMPTS = [
-  "Rewrite my Summary in cv.md to emphasize product ML and add a bullets line under Skills for Python + Torch.",
-  "Set profile.yml narrative: targeting staff+ ML roles, remote US, avoiding defense contractors.",
-  "My cover-letter base: formal, three short paragraphs, always close with willingness to relocate.",
+/** Short label on chip; full text sent to `/api/resume-context/apply`. */
+const COACH_PROMPTS: { label: string; instruction: string }[] = [
+  {
+    label: "Rewrite Summary + Skills (ML)",
+    instruction:
+      "Rewrite my Summary in cv.md to emphasize product ML and add a bullets line under Skills for Python + Torch.",
+  },
+  {
+    label: "Set targeting narrative",
+    instruction:
+      "Set profile.yml narrative: targeting staff+ ML roles, remote US, avoiding defense contractors.",
+  },
+  {
+    label: "Cover-letter voice",
+    instruction:
+      "My cover-letter base: formal, three short paragraphs, always close with willingness to relocate.",
+  },
+  {
+    label: "Sync profile from résumé",
+    instruction:
+      "Using only what is clearly supported by my current canonical résumé markdown, propose profile_updates: refresh target_roles, narrative.one_liner, narrative.proof_points, and candidate fields where they match the CV. Do not invent achievements or metrics. Return cv_md as null unless you fix obvious typos. Return cover_letter_base_md as null unless this message explicitly asks to change cover-letter preferences.",
+  },
 ];
 
 function makeId(): string {
@@ -92,6 +109,26 @@ function saveHistory(history: ChatMessage[]): void {
   }
 }
 
+async function readErrorMessage(res: Response): Promise<string> {
+  const text = await res.text().catch(() => "");
+  if (!text) return `HTTP ${res.status}`;
+  try {
+    const parsed = JSON.parse(text) as { error?: string; message?: string };
+    return parsed.error || parsed.message || `HTTP ${res.status}`;
+  } catch {
+    const sseMatch = text.match(/data:\s*(\{.*\})/);
+    if (sseMatch?.[1]) {
+      try {
+        const parsed = JSON.parse(sseMatch[1]) as { message?: string };
+        if (parsed.message) return parsed.message;
+      } catch {
+        // ignore parse failure
+      }
+    }
+    return text.slice(0, 300);
+  }
+}
+
 export function ChatPanel({ candidateFirst }: ChatPanelProps) {
   const [history, setHistory] = React.useState<ChatMessage[]>([]);
   const [recent, setRecent] = React.useState<RecentSearch[]>([]);
@@ -101,7 +138,8 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
   const [resumeCoachMode, setResumeCoachMode] = React.useState(false);
   const [resumeCoachLoading, setResumeCoachLoading] = React.useState(false);
   const [coachProgressHint, setCoachProgressHint] = React.useState("");
-  const [coachPdfFile, setCoachPdfFile] = React.useState<File | null>(null);
+  const [coachResumeFile, setCoachResumeFile] = React.useState<File | null>(null);
+  const [uploadedResumeMarkdown, setUploadedResumeMarkdown] = React.useState("");
   const coachPdfInputRef = React.useRef<HTMLInputElement>(null);
   const [pendingEval, setPendingEval] = React.useState<LinkedInResult | null>(
     null,
@@ -144,7 +182,8 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
 
   React.useEffect(() => {
     if (!resumeCoachMode) {
-      setCoachPdfFile(null);
+      setCoachResumeFile(null);
+      setUploadedResumeMarkdown("");
       if (coachPdfInputRef.current) coachPdfInputRef.current.value = "";
     }
   }, [resumeCoachMode]);
@@ -173,14 +212,15 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
       instructionOverride !== undefined
         ? instructionOverride.trim()
         : input.trim();
-    const pdfFile = coachPdfFile;
+    const resumeFile = coachResumeFile;
 
-    if (!pdfFile && !textNote) return;
+    if (!uploadedResumeMarkdown && !textNote) return;
     if (resumeCoachLoading || streaming) return;
 
-    const uploadingPdf = pdfFile !== null;
+    const uploadingPdf = uploadedResumeMarkdown.length > 0;
+    const resumeName = resumeFile?.name ?? "uploaded-resume";
     const userContent = uploadingPdf
-      ? `_Uploaded résumé PDF_: **${pdfFile.name}**${
+      ? `_Uploaded resume file_: **${resumeName}**${
           textNote ? `\n\n${textNote}` : ""
         }`
       : textNote;
@@ -195,27 +235,19 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     setResumeCoachLoading(true);
     setCoachProgressHint(
       uploadingPdf
-        ? "Extracting résumé PDF & updating canon files…"
+        ? "Applying uploaded resume markdown to canon files…"
         : "Updating cv.md, profile.yml, cover-letter base…",
     );
 
     try {
-      let res: Response;
-      if (pdfFile) {
-        const fd = new FormData();
-        fd.append("resume", pdfFile);
-        if (textNote) fd.append("instruction", textNote);
-        res = await fetch("/api/resume-context/apply", {
-          method: "POST",
-          body: fd,
-        });
-      } else {
-        res = await fetch("/api/resume-context/apply", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ instruction: textNote }),
-        });
-      }
+      const res = await fetch("/api/resume-context/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instruction: textNote || undefined,
+          uploadedResumeMarkdown: uploadedResumeMarkdown || undefined,
+        }),
+      });
       const data = (await res.json()) as {
         ok?: boolean;
         message?: string;
@@ -233,11 +265,12 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
       ]);
       toast.success(
         uploadingPdf
-          ? "Imported résumé PDF into cv.md / profile.yml (and cover-letter base when the model suggests it)."
+          ? "Imported uploaded resume into cv.md / profile.yml (and cover-letter base when the model suggests it)."
           : "cv.md / profile.yml / cover-letter base synced from chat.",
       );
       setInput("");
-      setCoachPdfFile(null);
+      setCoachResumeFile(null);
+      setUploadedResumeMarkdown("");
       if (coachPdfInputRef.current) coachPdfInputRef.current.value = "";
     } catch (e) {
       toast.error(`Coach failed: ${(e as Error).message}`);
@@ -255,6 +288,34 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     }
   };
 
+  const uploadResumeFile = async (file: File) => {
+    if (resumeCoachLoading || streaming) return;
+    setResumeCoachLoading(true);
+    setCoachProgressHint("Converting resume file to markdown…");
+    try {
+      const fd = new FormData();
+      fd.append("resume", file);
+      const res = await fetch("/api/resume-context/upload", {
+        method: "POST",
+        body: fd,
+      });
+      const data = (await res.json()) as { markdown?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      const md = (data.markdown ?? "").trim();
+      if (!md) throw new Error("Upload succeeded but markdown was empty.");
+      setUploadedResumeMarkdown(md);
+      toast.success("Resume file converted to markdown. Add notes and click send to apply.");
+    } catch (e) {
+      toast.error(`Resume import failed: ${(e as Error).message}`);
+      setCoachResumeFile(null);
+      setUploadedResumeMarkdown("");
+      if (coachPdfInputRef.current) coachPdfInputRef.current.value = "";
+    } finally {
+      setResumeCoachLoading(false);
+      setCoachProgressHint("");
+    }
+  };
+
   const sendMessage = async (rawText: string) => {
     const message = rawText.trim();
     if (!message || streaming || resumeCoachLoading) return;
@@ -266,9 +327,52 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     };
     const assistantId = makeId();
     setHistory((prev) => [...prev, userMsg]);
+    setInput("");
+
+    if (!resumeCoachMode && isExplicitCvMarkdownEditRequest(message)) {
+      setResumeCoachLoading(true);
+      setCoachProgressHint("Saving your edit to hosted cv.md (résumé coach pipeline)…");
+      try {
+        const res = await fetch("/api/resume-context/apply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ instruction: message }),
+        });
+        const data = (await res.json()) as {
+          ok?: boolean;
+          message?: string;
+          error?: string;
+        };
+        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+        setHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: data.message ?? "(no reply)",
+            id: assistantId,
+            resumeCoachReply: true,
+          },
+        ]);
+        toast.success("Résumé / profile coach applied your cv.md edit.");
+      } catch (e) {
+        toast.error(`Could not update cv.md: ${(e as Error).message}`);
+        setHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `_Update failed: ${(e as Error).message}_`,
+            id: assistantId,
+          },
+        ]);
+      } finally {
+        setResumeCoachLoading(false);
+        setCoachProgressHint("");
+      }
+      return;
+    }
+
     setStreaming(true);
     setStreamingContent("");
-    setInput("");
 
     try {
       const res = await fetch("/api/chat/stream", {
@@ -283,7 +387,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
         }),
       });
       if (!res.ok || !res.body) {
-        throw new Error(`HTTP ${res.status}`);
+        throw new Error(await readErrorMessage(res));
       }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -410,9 +514,10 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                 className="max-w-[min(280px,calc(100vw-12rem))] truncate text-xs h-8"
                 title={m.content}
                 disabled={busy}
-                onClick={() =>
-                  resumeCoachMode ? sendResumeCoach(m.content) : sendMessage(m.content)
-                }
+                onClick={() => {
+                  if (resumeCoachMode) void sendResumeCoach(m.content);
+                  else void sendMessage(m.content);
+                }}
               >
                 {m.content.length > 52
                   ? `${m.content.slice(0, 50)}…`
@@ -456,29 +561,41 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               <div>
                 <p className="font-semibold">
                   Hi{candidateFirst ? `, ${candidateFirst}` : ""} — what would
-                  you like to find?
+                  you like to work on?
                 </p>
                 <p className="text-sm text-muted-foreground max-w-md mt-1">
                   {resumeCoachMode
-                    ? "Describe changes, upload a résumé PDF (cv.md + profile.yml), or both — the coach merges into your workspace using Gemini."
-                    : "Ask the assistant about jobs, your tracker, or your reports. LinkedIn searches return inline 💾 Save and ⚡ Evaluate buttons under each result."}
+                    ? "Describe changes, upload a résumé file (`.docx/.md/.txt`) for conversion, or both — the coach merges into your workspace using your configured model."
+                    : "The assistant sees your **hosted résumé** in each reply. To **save** edits to cv.md, either turn on **Résumé / profile coach** or write clearly, e.g. **Update my cv.md …** (same save pipeline). Job discovery: **Pipeline → Run scan**."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 justify-center max-w-2xl mt-2">
-                {(resumeCoachMode ? COACH_PROMPTS : SUGGESTED_PROMPTS).map((p) => (
-                  <Button
-                    key={p}
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() =>
-                      resumeCoachMode ? sendResumeCoach(p) : sendMessage(p)
-                    }
-                    className="text-xs"
-                  >
-                    {p}
-                  </Button>
-                ))}
+                {resumeCoachMode
+                  ? COACH_PROMPTS.map((item) => (
+                      <Button
+                        key={item.label}
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void sendResumeCoach(item.instruction)}
+                        className="text-xs max-w-[220px] text-left whitespace-normal h-auto py-2 leading-snug"
+                        title={item.instruction}
+                      >
+                        {item.label}
+                      </Button>
+                    ))
+                  : SUGGESTED_PROMPTS.map((p) => (
+                      <Button
+                        key={p}
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void sendMessage(p)}
+                        className="text-xs"
+                      >
+                        {p}
+                      </Button>
+                    ))}
               </div>
             </div>
           ) : (
@@ -526,11 +643,10 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               <span className="font-medium text-foreground">
                 Résumé / profile coach
               </span>{" "}
-              — update <code className="text-[10px]">cv.md</code>,{" "}
-              <code className="text-[10px]">profile.yml</code>,{" "}
-              <code className="text-[10px]">cover-letter-base.md</code>{" "}
-              (requires <code className="text-[10px]">GEMINI_API_KEY</code> in environment). Job search LinkedIn scraping uses the{" "}
-              <em>other</em> mode.
+              — when on, Send applies your note to <code className="text-[10px]">cv.md</code>,{" "}
+              <code className="text-[10px]">profile.yml</code>, and{" "}
+              <code className="text-[10px]">cover-letter-base.md</code>. When off, imperative lines like **Update my cv.md …** still save via the same pipeline. Requires{" "}
+              <code className="text-[10px]">OPENAI_API_KEY</code>.
             </span>
           </label>
           {resumeCoachMode ? (
@@ -538,12 +654,16 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               <input
                 ref={coachPdfInputRef}
                 type="file"
-                accept="application/pdf,.pdf"
+                accept=".docx,.md,.txt,text/markdown,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 className="sr-only"
-                aria-label="Upload résumé PDF"
+                aria-label="Upload resume file"
                 disabled={busy}
                 onChange={(e) =>
-                  setCoachPdfFile(e.target.files?.[0] ?? null)
+                  {
+                    const file = e.target.files?.[0] ?? null;
+                    setCoachResumeFile(file);
+                    if (file) void uploadResumeFile(file);
+                  }
                 }
               />
               <Button
@@ -555,15 +675,15 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                 onClick={() => coachPdfInputRef.current?.click()}
               >
                 <Upload className="size-3.5 mr-1.5" />
-                Résumé PDF
+                Resume File
               </Button>
-              {coachPdfFile ? (
+              {coachResumeFile ? (
                 <>
                   <span
                     className="text-xs text-muted-foreground truncate max-w-[min(200px,calc(100vw-14rem))]"
-                    title={coachPdfFile.name}
+                    title={coachResumeFile.name}
                   >
-                    {coachPdfFile.name}
+                    {coachResumeFile.name}
                   </span>
                   <Button
                     type="button"
@@ -572,18 +692,19 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                     className="h-7 text-xs shrink-0"
                     disabled={busy}
                     onClick={() => {
-                      setCoachPdfFile(null);
+                      setCoachResumeFile(null);
+                      setUploadedResumeMarkdown("");
                       if (coachPdfInputRef.current) {
                         coachPdfInputRef.current.value = "";
                       }
                     }}
                   >
-                    Clear PDF
+                    Clear File
                   </Button>
                 </>
               ) : (
                 <span className="text-[11px] text-muted-foreground">
-                  Optional PDF → rebuilds cv.md + profile.yml
+                  Upload `.docx`, `.md`, or `.txt` first, then click send.
                 </span>
               )}
             </div>
@@ -591,24 +712,24 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (resumeCoachMode) sendResumeCoach();
-              else sendMessage(input);
+              if (resumeCoachMode) void sendResumeCoach();
+              else void sendMessage(input);
             }}
             className="flex items-end gap-2"
           >
             <Textarea
               placeholder={
                 resumeCoachMode
-                  ? "e.g. Instructions to merge into your PDF import, or type-only edits (Skills, headline…)"
-                  : "Ask anything about jobs, your tracker, or LinkedIn…"
+                  ? "e.g. Instructions to merge into your uploaded resume import, or type-only edits (Skills, headline…)"
+                    : "Q&A: tracker, strategy, … · Save cv: “Update my cv.md …” or enable coach above"
               }
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  if (resumeCoachMode) sendResumeCoach();
-                  else sendMessage(input);
+                  if (resumeCoachMode) void sendResumeCoach();
+                  else void sendMessage(input);
                 }
               }}
               disabled={busy}
@@ -619,7 +740,9 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               type="submit"
               disabled={
                 busy ||
-                (resumeCoachMode ? !coachPdfFile && !input.trim() : !input.trim())
+                (resumeCoachMode
+                  ? !uploadedResumeMarkdown && !input.trim()
+                  : !input.trim())
               }
               size="lg"
               className="self-stretch"
@@ -753,6 +876,7 @@ function Bubble({ message, onEvaluate, live }: BubbleProps) {
 }
 
 function InlineEval({ job }: { job: LinkedInResult }) {
+  const router = useRouter();
   const [jdReady, setJdReady] = React.useState(false);
   const [jdText, setJdText] = React.useState<string | null>(null);
   const [jdError, setJdError] = React.useState<string | null>(null);
@@ -806,6 +930,9 @@ function InlineEval({ job }: { job: LinkedInResult }) {
       url="/api/eval/stream"
       body={{ jdText, sourceUrl: job.url }}
       label={`Evaluating ${job.company}`}
+      onDone={(_txt, exit) => {
+        if (exit === 0) router.refresh();
+      }}
     />
   );
 }

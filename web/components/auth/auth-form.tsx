@@ -9,7 +9,17 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { TERMS_SECTIONS, TERMS_VERSION } from "@/lib/legal";
 
 type Mode = "signin" | "signup";
 
@@ -23,6 +33,9 @@ export function AuthForm({ blocked = false }: { blocked?: boolean }) {
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [acceptedTerms, setAcceptedTerms] = React.useState(false);
+  const [termsOpen, setTermsOpen] = React.useState(false);
+  const [scrolledToEnd, setScrolledToEnd] = React.useState(false);
+  const [confirmedRead, setConfirmedRead] = React.useState(false);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,7 +72,7 @@ export function AuthForm({ blocked = false }: { blocked?: boolean }) {
             data: {
               full_name: fullName.trim() || undefined,
               terms_accepted: true,
-              terms_version: "2026-04-30",
+              terms_version: TERMS_VERSION,
               terms_accepted_at: new Date().toISOString(),
             },
           },
@@ -83,6 +96,18 @@ export function AuthForm({ blocked = false }: { blocked?: boolean }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const onTermsScroll: React.UIEventHandler<HTMLDivElement> = (e) => {
+    const el = e.currentTarget;
+    const reached =
+      el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
+    if (reached) setScrolledToEnd(true);
+  };
+
+  const confirmTermsAcceptance = () => {
+    setAcceptedTerms(true);
+    setTermsOpen(false);
   };
 
   return (
@@ -149,31 +174,95 @@ export function AuthForm({ blocked = false }: { blocked?: boolean }) {
             />
           </div>
           {mode === "signup" ? (
-            <label className="flex items-start gap-2 text-sm text-muted-foreground">
-              <input
-                type="checkbox"
-                className="mt-0.5 size-4 rounded border-input"
-                checked={acceptedTerms}
-                onChange={(e) => setAcceptedTerms(e.target.checked)}
-                disabled={loading}
-                required
-              />
-              <span>
-                I agree to the{" "}
+            <div className="space-y-2 rounded-md border p-3">
+              <p className="text-xs text-muted-foreground">
+                You must read and accept the Terms before creating an account.
+              </p>
+              <Dialog open={termsOpen} onOpenChange={setTermsOpen}>
+                <DialogTrigger asChild>
+                  <Button type="button" variant="outline" className="w-full">
+                    {acceptedTerms
+                      ? "Terms accepted"
+                      : "Read Terms and Conditions"}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Terms and Conditions</DialogTitle>
+                    <DialogDescription>
+                      Scroll through the full terms, then confirm acceptance to
+                      continue sign-up.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div
+                    className="max-h-72 overflow-y-auto rounded border p-3 text-sm space-y-3"
+                    onScroll={onTermsScroll}
+                  >
+                    {TERMS_SECTIONS.map((section) => (
+                      <div key={section.title} className="space-y-1">
+                        <p className="font-medium">{section.title}</p>
+                        <p className="text-muted-foreground">{section.body}</p>
+                      </div>
+                    ))}
+                    <p className="text-xs text-muted-foreground pt-2">
+                      Version: {TERMS_VERSION}
+                    </p>
+                  </div>
+                  <label className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 size-4 rounded border-input"
+                      checked={confirmedRead}
+                      onChange={(e) => setConfirmedRead(e.target.checked)}
+                      disabled={!scrolledToEnd}
+                    />
+                    <span>
+                      I confirm I have scrolled and read the Terms, including
+                      legal liability disclaimers.
+                    </span>
+                  </label>
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setTermsOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={confirmTermsAcceptance}
+                      disabled={!scrolledToEnd || !confirmedRead}
+                    >
+                      Accept and Continue
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              <p className="text-xs text-muted-foreground">
+                By continuing, you agree to the{" "}
                 <Link href="/terms" className="underline" target="_blank">
-                  Terms of Service
-                </Link>{" "}
-                and{" "}
+                  Terms
+                </Link>
+                ,{" "}
                 <Link href="/privacy" className="underline" target="_blank">
                   Privacy Policy
                 </Link>
+                , and{" "}
+                <Link href="/attribution" className="underline" target="_blank">
+                  Attribution
+                </Link>
                 .
-              </span>
-            </label>
+              </p>
+            </div>
           ) : null}
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           {notice ? <p className="text-sm text-muted-foreground">{notice}</p> : null}
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={loading || (mode === "signup" && !acceptedTerms)}
+          >
             {loading ? (
               <>
                 <Loader2 className="size-4 animate-spin" />

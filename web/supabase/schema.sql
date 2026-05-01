@@ -32,8 +32,11 @@ create table if not exists public.applications (
   cv_path text,
   cv_ats_path text,
   cv_full_path text,
+  cv_ats_docx_path text,
+  cv_full_docx_path text,
   cv_legacy_path text,
   cl_path text,
+  cl_docx_path text,
   has_cv_ats boolean not null default false,
   has_cv_full boolean not null default false,
   has_cv_legacy_only boolean not null default false,
@@ -109,3 +112,6 @@ create policy reports_owner_all on public.reports
 drop policy if exists documents_owner_all on public.documents;
 create policy documents_owner_all on public.documents
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Storage: after creating the private bucket `documents`, run
+-- `storage-documents-policies.sql` so uploads (tailored draft markdown) succeed.

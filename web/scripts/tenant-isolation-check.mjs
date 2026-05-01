@@ -18,6 +18,7 @@ const requiredApiFiles = [
   'app/api/chat/stream/route.ts',
   'app/api/eval/stream/route.ts',
   'app/api/docs/generate/route.ts',
+  'app/api/docs/persist-artifact/route.ts',
   'app/api/resume-context/apply/route.ts',
   'app/api/scan/run/route.ts',
   'app/api/jd/route.ts',
@@ -74,13 +75,13 @@ if (existsSync(schemaPath)) {
   }
 }
 
-const middlewarePath = join(ROOT, 'middleware.ts');
-assertCondition(existsSync(middlewarePath), 'Missing middleware.ts');
-if (existsSync(middlewarePath)) {
-  const middleware = await readFile(middlewarePath, 'utf-8');
+const proxyPath = join(ROOT, 'proxy.ts');
+assertCondition(existsSync(proxyPath), 'Missing proxy.ts (Next.js proxy convention)');
+if (existsSync(proxyPath)) {
+  const proxySrc = await readFile(proxyPath, 'utf-8');
   assertCondition(
-    middleware.includes('APPLYPANDA_LOCKDOWN'),
-    'middleware.ts must include APPLYPANDA_LOCKDOWN fail-safe',
+    proxySrc.includes('APPLYPANDA_LOCKDOWN'),
+    'proxy.ts must include APPLYPANDA_LOCKDOWN fail-safe',
   );
 }
 

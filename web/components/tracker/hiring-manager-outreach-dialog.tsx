@@ -172,7 +172,7 @@ export function HiringManagerOutreachDialog({
                 <ul className="list-disc list-inside space-y-0.5 text-muted-foreground">
                   <li>
                     Draft generation needs{" "}
-                    <code className="rounded bg-muted px-1 py-px">GEMINI_API_KEY</code>{" "}
+                    <code className="rounded bg-muted px-1 py-px">OPENAI_API_KEY</code>{" "}
                     (repo <code>.env</code> or env).
                   </li>
                   <li>
@@ -190,7 +190,7 @@ export function HiringManagerOutreachDialog({
                 </ul>
                 {!config?.canGenerate ? (
                   <p className="text-amber-700 dark:text-amber-400">
-                    Generate unavailable until Gemini is configured.
+                    Generate unavailable until model provider is configured.
                   </p>
                 ) : null}
                 {!config?.canSend ? (

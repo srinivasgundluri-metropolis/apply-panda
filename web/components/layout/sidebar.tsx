@@ -50,7 +50,7 @@ const NAV_ITEMS = [
     href: "/pipeline",
     label: "Pipeline",
     icon: Workflow,
-    description: "Evaluate / scan",
+    description: "Evaluate · board scan",
   },
   {
     href: "/scan-results",

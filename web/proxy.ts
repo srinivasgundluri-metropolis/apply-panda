@@ -16,9 +16,9 @@ const PROTECTED_PREFIXES = [
   "/profile",
 ];
 
-const PUBLIC_API_PREFIXES = ["/api/outreach/config"];
+const PUBLIC_API_PREFIXES = ["/api/outreach/config", "/api/auth/allowlist"];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const lockdown = process.env.APPLYPANDA_LOCKDOWN === "true";
 
@@ -59,7 +59,7 @@ export async function middleware(request: NextRequest) {
   try {
     user = await updateAuthSession(request, response);
   } catch {
-    // If env is missing, don't hard-crash middleware in dev.
+    // If env is missing, don't hard-crash proxy in dev.
     user = null;
   }
 

@@ -40,7 +40,7 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
   const [bumpKey, setBumpKey] = React.useState(0);
 
   const applied = row.status.trim() === "Applied";
-  /** Replace on-disk tailored PDFs only before you mark the row Applied. */
+  /** Replace stored tailored PDF/HTML only before you mark the row Applied. */
   const canOverwrite = !applied;
 
   const trigger = (kind: DocKind, regenerate = false) => {
@@ -48,11 +48,25 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
     setBumpKey((k) => k + 1);
   };
 
-  const onDone = () => {
+  const onDone = (fullText: string, exitCode: number) => {
     setPending(null);
-    toast.success("Document generation complete.");
+    if (exitCode !== 0) {
+      const lines = fullText.trim().split("\n").filter(Boolean);
+      const warned = [...lines].reverse().find((l) => l.includes("⚠️"));
+      const snippet = (warned ?? lines.at(-1) ?? "").slice(0, 200);
+      toast.error(
+        snippet
+          ? `Generation failed: ${snippet}`
+          : "Generation failed or stopped early — scroll the stream for details.",
+      );
+      return;
+    }
+    toast.success(
+      "Tailored documents saved — open PDFs (or HTML fallback) below or in Documents.",
+    );
     router.refresh();
   };
+
   const onError = (msg: string) => {
     setPending(null);
     toast.error(`Generation failed: ${msg}`);
@@ -110,7 +124,7 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
       <div className="flex flex-wrap gap-2">
         {row.cvAtsDownload ? (
           <Button asChild variant="secondary" size="sm">
-            <a href={row.cvAtsDownload} download>
+            <a href={row.cvAtsDownload} download title="ATS CV (PDF or HTML fallback)">
               <Download className="size-4" />
               ATS CV
             </a>
@@ -118,7 +132,7 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
         ) : null}
         {row.cvFullDownload ? (
           <Button asChild variant="secondary" size="sm">
-            <a href={row.cvFullDownload} download>
+            <a href={row.cvFullDownload} download title="Full CV (HTML, print-ready)">
               <Download className="size-4" />
               Full CV
             </a>
@@ -148,12 +162,13 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
         ) : null}
         {row.hasCl && row.clDownload ? (
           <Button asChild variant="secondary" size="sm">
-            <a href={row.clDownload} download>
+            <a href={row.clDownload} download title="Cover letter (PDF or HTML fallback)">
               <Download className="size-4" />
-              Download Cover Letter
+              Cover Letter
             </a>
           </Button>
-        ) : (
+        ) : null}
+        {!(row.hasCl && row.clDownload) ? (
           <Button
             size="sm"
             onClick={() => trigger("cl")}
@@ -166,7 +181,7 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
             )}
             Generate Cover Letter
           </Button>
-        )}
+        ) : null}
         {!row.hasCvSuite || !row.hasCl ? (
           <Button
             size="sm"
@@ -248,7 +263,7 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
 
       {applied && (row.hasCvSuite || row.hasCl) ? (
         <p className="text-[11px] text-muted-foreground pt-1">
-          Applied — tailored PDFs are not regenerated (locked to what you
+          Applied — tailored documents are not regenerated (locked to what you
           submitted).
         </p>
       ) : null}
@@ -258,9 +273,11 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
           key={`${row.num}-${pending.kind}-${pending.regenerate}-${bumpKey}`}
           url="/api/docs/generate"
           body={{
+            applicationNum: row.num,
             kind: pending.kind,
             company: row.company,
             role: row.role,
+            reportNum: row.reportNum || undefined,
             reportRel: row.reportPath || undefined,
             regenerate: pending.regenerate,
             canonicalStatus: row.status,

@@ -1,6 +1,11 @@
 import { NextRequest } from "next/server";
 import { requireApiUser } from "@/lib/supabase/api";
 import { sseError, sseFromText, runGeminiPrompt } from "@/lib/gemini-runtime";
+import {
+  persistEvalToSupabase,
+  resolveEvalMeta,
+  splitEvalResponse,
+} from "@/lib/eval-persist";
 
 export const dynamic = "force-dynamic";
 
@@ -26,10 +31,57 @@ export async function POST(req: NextRequest) {
     return sseError("jdText required", 400);
   }
 
-  const prompt = `You are an expert job-fit evaluator.\nReturn concise GitHub markdown with sections:\n1) Role and company summary\n2) Fit score (0-5 with one decimal)\n3) Strengths (bullet list)\n4) Risks/Gaps (bullet list)\n5) Recommendation (Apply / Skip) with one-paragraph rationale\n6) Next actions (3 bullets)\n\n${body.sourceUrl ? `Source URL: ${body.sourceUrl}\n` : ""}\nJob description:\n---\n${jdText.slice(0, 24000)}\n---`;
+  const prompt = `You are an expert job-fit evaluator.
+Return concise GitHub-flavored Markdown with sections:
+1) Role and company summary (use ONE top-level markdown heading "# {Company name} — {Short role title}" so parsers can infer fields)
+2) Fit score as "X.X/5"
+3) Strengths (bullet list)
+4) Risks/Gaps (bullet list)
+5) Recommendation starting with Apply or Skip, plus one short paragraph rationale
+6) Next actions (3 bullets)
+
+After those sections ONLY, emit this exact machine-readable block on its own lines (JSON must be UTF-8, no Markdown code fences, company and role must be plain short strings):
+
+<<<EVAL_META
+{"company":"Short employer","role":"Job title","score":4.2,"legitimacy":"unknown","recommendation":"Apply","notes":"Single-line summary"}
+>>>
+
+score is a JSON number between 0 and 5 with at most one decimal. legitimacy MUST be exactly one of: strong, moderate, weak, unknown. recommendation MUST start with Apply or Skip (you may append text after Skip/Apply).
+
+${body.sourceUrl ? `Source URL: ${body.sourceUrl}\n` : ""}
+Job description:
+---
+${jdText.slice(0, 24000)}
+---`;
   try {
     const text = await runGeminiPrompt(prompt, body.model);
-    return sseFromText(text);
+    const { displayMarkdown, metaJson } = splitEvalResponse(text);
+    const meta = resolveEvalMeta({
+      displayMarkdown,
+      metaJson,
+      sourceUrl: body.sourceUrl ?? null,
+    });
+    try {
+      const { num } = await persistEvalToSupabase({
+        supabase: auth.supabase,
+        userId: auth.user.id,
+        sourceUrl: body.sourceUrl ?? null,
+        displayMarkdown,
+        meta,
+      });
+      return sseFromText(
+        `${displayMarkdown}\n\n---\n✅ Saved to tracker and reports as #${num} (refresh Tracker / Dashboard).`,
+      );
+    } catch (persistErr) {
+      const msg =
+        persistErr instanceof Error
+          ? persistErr.message
+          : String(persistErr);
+      return sseFromText(
+        `${displayMarkdown}\n\n---\n⚠️ Evaluation finished but could not save to your account: ${msg}`,
+        1,
+      );
+    }
   } catch (e) {
     return sseError((e as Error).message || "Evaluation failed", 500);
   }

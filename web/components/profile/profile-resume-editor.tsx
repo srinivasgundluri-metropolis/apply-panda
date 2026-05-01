@@ -32,23 +32,57 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import type { Profile } from "@/lib/types";
+import type { PortalsYamlConfig, Profile } from "@/lib/types";
+import { normalizeHostedPortalsPayload } from "@/lib/hosted-profile-portals";
+import {
+  mergeTrackedDeduped,
+  partitionTrackedAgainstCatalog,
+  trackedCompaniesFromCatalogKeys,
+} from "@/lib/portal-catalog-keys";
+import { extraBoardsFromUrlLines } from "@/lib/extra-portal-urls";
+import { EmployerBoardPicker } from "@/components/profile/employer-board-picker";
+
+function initialEmployerUiFromPortals(portals: Profile["portals"]) {
+  const norm = normalizeHostedPortalsPayload(portals ?? null);
+  const tracked = norm?.tracked_companies ?? [];
+  const { catalogKeys, extras } = partitionTrackedAgainstCatalog(tracked);
+  const extraUrlsText = extras
+    .map((e) => e.careers_url ?? e.api ?? "")
+    .filter(Boolean)
+    .join("\n");
+  return {
+    catalogKeys,
+    extraUrlsText,
+    companyFilter: norm?.company_filter ?? "",
+    titleNegCsv: norm?.title_filter?.negative?.join(", ") ?? "",
+    locNegCsv: norm?.location_filter?.negative?.join(", ") ?? "",
+  };
+}
 
 interface Props {
   initial: Profile;
   /** Raw contents of repo-root `cv.md` — your experience narrative. */
   initialCvMarkdown: string;
+  /** Initial tab when opening from deep links (e.g. `?tab=yaml`). */
+  defaultTab?: "resume" | "yaml";
 }
+
+const CHAT_HISTORY_KEY = "career-ops:chat-history";
+const CHAT_RECENT_SEARCH_KEY = "career-ops:recent-searches";
 
 /**
  * Combined editor for `config/profile.yml` and `cv.md` with one **Update**
  * action so tailored CV/cover-letter runs always read fresh canonical data.
  *
  * Tailored document generation expects:
- * - **ATS + Full CV** — two PDFs per role (`-ats`/`-full` suffix); see modes/pdf.md
- * - Cover letter remains a separate PDF beside them
+ * - **ATS + Full CV** — two one-page artifacts per role (`-ats`/`-full`), usually `.pdf`.
+ * - Cover letter — separate one-page file per role (`-cover`).
  */
-export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
+export function ProfileResumeEditor({
+  initial,
+  initialCvMarkdown,
+  defaultTab = "resume",
+}: Props) {
   const router = useRouter();
   const [saving, setSaving] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
@@ -109,7 +143,35 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
     (initial.narrative?.deal_breakers ?? []).join("\n"),
   );
 
+  const [selectedEmployerKeys, setSelectedEmployerKeys] = React.useState<Set<string>>(() =>
+    initialEmployerUiFromPortals(initial.portals ?? null).catalogKeys,
+  );
+  const [extraUrlsText, setExtraUrlsText] = React.useState(
+    () => initialEmployerUiFromPortals(initial.portals ?? null).extraUrlsText,
+  );
+  const [companyFilter, setCompanyFilter] = React.useState(
+    () => initialEmployerUiFromPortals(initial.portals ?? null).companyFilter,
+  );
+  const [titleNegCsv, setTitleNegCsv] = React.useState(
+    () => initialEmployerUiFromPortals(initial.portals ?? null).titleNegCsv,
+  );
+  const [locNegCsv, setLocNegCsv] = React.useState(
+    () => initialEmployerUiFromPortals(initial.portals ?? null).locNegCsv,
+  );
+
+  React.useEffect(() => {
+    const u = initialEmployerUiFromPortals(initial.portals ?? null);
+    setSelectedEmployerKeys(u.catalogKeys);
+    setExtraUrlsText(u.extraUrlsText);
+    setCompanyFilter(u.companyFilter);
+    setTitleNegCsv(u.titleNegCsv);
+    setLocNegCsv(u.locNegCsv);
+  }, [initial.portals]);
+
   const [cvMarkdown, setCvMarkdown] = React.useState(initialCvMarkdown);
+  const cvIsEmpty = cvMarkdown.trim().length === 0;
+  const resumeCoachImportPrompt =
+    "Use this uploaded resume as the source of truth. Update both cv.md and profile.yml (candidate info, target_roles including archetypes, and narrative proof points). Do not invent metrics. Keep one proof point per line.";
 
   const splitList = (s: string): string[] =>
     s
@@ -127,6 +189,12 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
       const res = await fetch("/api/account/delete", { method: "POST" });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+      try {
+        window.localStorage.removeItem(CHAT_HISTORY_KEY);
+        window.localStorage.removeItem(CHAT_RECENT_SEARCH_KEY);
+      } catch {
+        // ignore storage permission / private mode failures
+      }
       toast.success("Account deleted. All associated data has been removed.");
       window.location.href = "/auth";
     } catch (err) {
@@ -140,6 +208,55 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
     e?.preventDefault();
     setSaving(true);
     try {
+      const linkedinValue = linkedin.trim();
+      if (!linkedinValue) {
+        toast.error("LinkedIn URL is required.");
+        return;
+      }
+      if (!/^https?:\/\/(www\.)?linkedin\.com\/.+/i.test(linkedinValue)) {
+        toast.error("LinkedIn URL must be a full https://linkedin.com/... link.");
+        return;
+      }
+      const primaryRoles = splitList(primary);
+      const secondaryRoles = splitList(secondary);
+      const archetypeRoles = splitList(archetypes);
+      if (primaryRoles.length === 0) {
+        toast.error("Primary roles are required.");
+        return;
+      }
+      if (secondaryRoles.length === 0) {
+        toast.error("Secondary roles are required.");
+        return;
+      }
+      if (archetypeRoles.length === 0) {
+        toast.error("Archetypes are required.");
+        return;
+      }
+
+      const fromCatalog = trackedCompaniesFromCatalogKeys(selectedEmployerKeys);
+      const { ok: extraRows, skippedLines } = extraBoardsFromUrlLines(extraUrlsText);
+      if (skippedLines.length > 0) {
+        toast.warning(
+          `${skippedLines.length} extra URL line(s) skipped — use Greenhouse, Ashby, Lever, or Workday board URLs only.`,
+        );
+      }
+      const mergedTracked = mergeTrackedDeduped(fromCatalog, extraRows);
+      if (mergedTracked.length === 0) {
+        toast.error("Pick at least one employer from the list or add a supported careers URL below.");
+        setSaving(false);
+        return;
+      }
+
+      const titleNegLines = splitList(titleNegCsv);
+      const locNegLines = splitList(locNegCsv);
+      const cf = companyFilter.trim();
+      const portalsPayload: PortalsYamlConfig = {
+        tracked_companies: mergedTracked,
+        ...(cf ? { company_filter: cf.slice(0, 200) } : {}),
+        ...(titleNegLines.length ? { title_filter: { negative: titleNegLines } } : {}),
+        ...(locNegLines.length ? { location_filter: { negative: locNegLines } } : {}),
+      };
+
       const payload: Profile = {
         candidate: {
           full_name: fullName.trim() || undefined,
@@ -147,14 +264,14 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
           phone: phone.trim() || undefined,
           location: location.trim() || undefined,
           timezone: timezone.trim() || undefined,
-          linkedin: linkedin.trim() || undefined,
+          linkedin: linkedinValue,
           github: github.trim() || undefined,
           website: website.trim() || undefined,
         },
         target_roles: {
-          primary: splitList(primary),
-          secondary: splitList(secondary),
-          archetypes: splitList(archetypes),
+          primary: primaryRoles,
+          secondary: secondaryRoles,
+          archetypes: archetypeRoles,
         },
         narrative: {
           one_liner: oneLiner.trim() || undefined,
@@ -162,31 +279,47 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
           proof_points: splitList(proofPoints),
           deal_breakers: splitList(dealBreakers),
         },
+        portals: portalsPayload,
       };
 
-      const [resProfile, resCv] = await Promise.all([
-        fetch("/api/profile", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }),
-        fetch("/api/cv", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ markdown: cvMarkdown }),
-        }),
-      ]);
+      const resProfile = await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const profileBody = (await resProfile.json().catch(() => ({}))) as {
+        profile?: Profile;
+        error?: string;
+      };
+      const profileOk = resProfile.ok;
 
-      if (!resProfile.ok) {
-        const j = await resProfile.json().catch(() => ({}));
-        throw new Error(j.error ?? `Profile HTTP ${resProfile.status}`);
+      const resCv = await fetch("/api/cv", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markdown: cvMarkdown }),
+      });
+      const cvBody = (await resCv.json().catch(() => ({}))) as { error?: string };
+      const cvOk = resCv.ok;
+
+      if (!profileOk && !cvOk) {
+        throw new Error(
+          [
+            profileBody.error ?? `Profile HTTP ${resProfile.status}`,
+            cvBody.error ?? `CV HTTP ${resCv.status}`,
+          ].join(" | "),
+        );
       }
-      if (!resCv.ok) {
-        const j = await resCv.json().catch(() => ({}));
-        throw new Error(j.error ?? `CV HTTP ${resCv.status}`);
+      if (!profileOk && cvOk) {
+        throw new Error(profileBody.error ?? `Profile HTTP ${resProfile.status}`);
       }
 
-      toast.success("Profile YAML and cv.md updated.");
+      if (profileOk && cvOk) {
+        toast.success("Profile and résumé updated.");
+      } else {
+        toast.warning(
+          `Profile updated, but résumé save failed: ${cvBody.error ?? `CV HTTP ${resCv.status}`}`,
+        );
+      }
       router.refresh();
     } catch (err) {
       toast.error(`Save failed: ${(err as Error).message}`);
@@ -197,8 +330,36 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
 
   return (
     <form onSubmit={saveAll} className="flex flex-col gap-6">
-      <Tabs defaultValue="resume" className="gap-4">
-        <TabsList className="w-fit">
+      {cvIsEmpty ? (
+        <Card className="border-amber-300/60 bg-amber-50/50 dark:bg-amber-950/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">
+              Start here: import your resume first
+            </CardTitle>
+            <CardDescription className="space-y-2 text-sm">
+              <p>
+                Your <code className="text-xs">cv.md</code> is empty. Go to{" "}
+                <Link href="/chat" className="underline font-medium">
+                  Chat
+                </Link>
+                , turn on <strong>Resume coach</strong>, upload your DOCX/MD resume,
+                and send this prompt so it updates both{" "}
+                <code className="text-xs">cv.md</code> and{" "}
+                <code className="text-xs">profile.yml</code>.
+              </p>
+              <Textarea
+                readOnly
+                value={resumeCoachImportPrompt}
+                rows={3}
+                className="font-mono text-xs bg-background"
+              />
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      ) : null}
+
+      <Tabs defaultValue={defaultTab} className="gap-4">
+        <TabsList className="w-fit flex-wrap">
           <TabsTrigger value="resume">Résumé (`cv.md`)</TabsTrigger>
           <TabsTrigger value="yaml">Targeting (`profile.yml`)</TabsTrigger>
         </TabsList>
@@ -211,9 +372,8 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
                 Edit Markdown for <code className="text-xs">cv.md</code> in the
                 repo root — bullet roles, impact metrics, projects, and education.
                 The tailored-CV generator reads this verbatim and produces{" "}
-                <strong>two</strong> PDFs per role: an{" "}
-                <strong>ATS-optimized</strong> variant and a{" "}
-                <strong>full-length</strong> variant (see modes/pdf.md).
+                <strong>two</strong> one-page outputs per role: an{" "}
+                <strong>ATS-optimized</strong> variant and a denser reader-friendly variant, exported as PDF when the server has Chromium (HTML fallback otherwise).
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -270,6 +430,8 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
                   id="linkedin"
                   value={linkedin}
                   onChange={setLinkedin}
+                  required
+                  placeholder="https://linkedin.com/in/your-handle"
                 />
                 <Field
                   label="GitHub URL"
@@ -290,6 +452,14 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
           <Card>
             <CardHeader>
               <CardTitle>Target roles</CardTitle>
+              <CardDescription className="text-sm leading-relaxed">
+                Pipeline <strong>Scan job boards</strong> and Chat ATS search match these role lines (plus{" "}
+                <strong>Location</strong> under Candidate). Employer URLs live in the{" "}
+                <a href="#profile-employer-boards" className="underline font-medium">
+                  employer board picker
+                </a>{" "}
+                below (same sources as career-ops <code className="text-xs">portals.yml</code>).
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <Field
@@ -298,12 +468,14 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
                 value={primary}
                 onChange={setPrimary}
                 placeholder="Senior Backend Engineer"
+                required
               />
               <Field
                 label="Secondary roles (comma-separated)"
                 id="secondary"
                 value={secondary}
                 onChange={setSecondary}
+                required
               />
               <Field
                 label="Archetypes (comma-separated)"
@@ -311,7 +483,83 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
                 value={archetypes}
                 onChange={setArchetypes}
                 placeholder="API platform"
+                required
               />
+            </CardContent>
+          </Card>
+
+          <Card id="profile-employer-boards">
+            <CardHeader>
+              <CardTitle>Employer job boards</CardTitle>
+              <CardDescription className="text-sm leading-relaxed space-y-2">
+                <p>
+                  Choose companies whose ATS feeds we poll (Greenhouse, Ashby, Lever, Workday). This replaces typing{" "}
+                  <code className="text-xs">tracked_companies</code> by hand — we still save the same JSON under the hood.
+                </p>
+                <p>
+                  “US-heavy” / “EU / UK” are optional shortcuts (HQ guesses), not official registry filters. Prefer{" "}
+                  <strong>Select all</strong> or search when you want everything listed.
+                </p>
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-6">
+              <EmployerBoardPicker
+                selectedKeys={selectedEmployerKeys}
+                onSelectedKeysChange={setSelectedEmployerKeys}
+              />
+
+              <div className="grid gap-2">
+                <Label htmlFor="extra_board_urls">Extra careers URLs (optional)</Label>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  One URL per line for boards <strong>not</strong> in the list above — same ATS types only.
+                </p>
+                <Textarea
+                  id="extra_board_urls"
+                  value={extraUrlsText}
+                  onChange={(e) => setExtraUrlsText(e.target.value)}
+                  spellCheck={false}
+                  rows={4}
+                  className="font-mono text-xs leading-relaxed"
+                  placeholder={"https://job-boards.greenhouse.io/acme"}
+                />
+              </div>
+
+              <div className="grid gap-1.5 max-w-xl">
+                <Label htmlFor="company_filter">Narrow boards by name (optional)</Label>
+                <Input
+                  id="company_filter"
+                  value={companyFilter}
+                  onChange={(e) => setCompanyFilter(e.target.value)}
+                  placeholder="Substring of employer display name"
+                  maxLength={200}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Same as <code className="text-xs">company_filter</code> in portals.yml — limits which selected boards run.
+                </p>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="title_neg">Exclude title keywords (optional)</Label>
+                  <Input
+                    id="title_neg"
+                    value={titleNegCsv}
+                    onChange={(e) => setTitleNegCsv(e.target.value)}
+                    placeholder="Junior, Intern, …"
+                  />
+                  <p className="text-xs text-muted-foreground">Comma-separated · maps to title_filter.negative</p>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="loc_neg">Exclude location keywords (optional)</Label>
+                  <Input
+                    id="loc_neg"
+                    value={locNegCsv}
+                    onChange={(e) => setLocNegCsv(e.target.value)}
+                    placeholder="EMEA, Poland, …"
+                  />
+                  <p className="text-xs text-muted-foreground">Comma-separated · maps to location_filter.negative</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -363,9 +611,7 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground max-w-lg">
-          One button writes <code>config/profile.yml</code> (deep-merge) and{" "}
-          <code>cv.md</code> next time you generate tailored ATS + Full CV PDFs from
-          the Tracker, those files are the sources of truth.
+          Saves targeting, employer board picks, and résumé markdown so ATS scans stay aligned with career-ops.
         </p>
         <Button type="submit" disabled={saving} size="lg">
           {saving ? (
@@ -465,6 +711,7 @@ function Field({
   onChange,
   type = "text",
   placeholder,
+  required = false,
 }: {
   label: string;
   id: string;
@@ -472,6 +719,7 @@ function Field({
   onChange: (v: string) => void;
   type?: string;
   placeholder?: string;
+  required?: boolean;
 }) {
   return (
     <div className="grid gap-1.5">
@@ -482,6 +730,7 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        required={required}
       />
     </div>
   );

@@ -39,8 +39,8 @@ function toResults(
 }
 
 /**
- * Live portal job search — titles filtered by per-user `profiles.data.portals` only; optional keywords narrow job titles.
- * Read-only (does not write scan_history).
+ * Job search for chat: same engine as Pipeline scan (Adzuna when configured, else curated ATS boards).
+ * Filters come from per-user `profiles.data.portals`; optional keywords narrow titles. Read-only (no scan_history writes).
  */
 export async function POST(req: NextRequest) {
   const auth = await requireApiUser();

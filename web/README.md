@@ -29,6 +29,12 @@ OPENAI_FALLBACK_MODELS="gpt-4.1-mini"
 APPLYPANDA_ALLOWED_EMAILS="user1@example.com,user2@example.com,user3@example.com,user4@example.com"
 # Optional: Chrome/Chromium binary for tailored PDF rendering locally (or debugging `/api/docs/pdf-probe`)
 # PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+#
+# Broad job board scans (title + location, many employers) — recommended for Pipeline:
+# https://developer.adzuna.com/
+# ADZUNA_APP_ID=...
+# ADZUNA_APP_KEY=...
+# APPLYPANDA_ADZUNA_COUNTRY=us
 ```
 
 ## Hosted deployment (Vercel)

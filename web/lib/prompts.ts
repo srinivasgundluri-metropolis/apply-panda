@@ -33,7 +33,7 @@ export function buildChatPrompt(
 
 JOB LISTINGS IN THE DASHBOARD (CHAT):
 - **LinkedIn-first mode:** When **LinkedIn search first** is checked, ApplyPanda calls **\`/api/linkedin/search\`** (guest Jobs HTML API, same sourcing idea as \`node scrape-linkedin.mjs\`). Rows are **real** \`linkedin.com/jobs/view/{id}\` URLs—never substitute invented links.
-- **ATS boards:** Scanner / Pipeline hits Greenhouse · Ashby · Lever · Workday from the user profile list — **not** from this chat pane. Mention Pipeline / Tracker scan history instead of implying chat runs ATS search.
+- **ATS / Adzuna scan:** Scanner / Pipeline uses the user profile title & location filters. When Adzuna env credentials are configured on the server, search is broad job-index style; otherwise it sweeps curated Greenhouse/Ashby/Lever public boards — **not** from this chat pane. Mention Pipeline / scan history rather than implying chat runs fetches alone.
 
 LOCAL WORKSPACE (prefer this for "what's in my tracker / scan history" questions):
 - \`data/scan-history.tsv\` — every job offer the portal scanner has ever seen (columns include \`company\`, \`title\`, \`url\`, \`portal\`, \`status\`, \`first_seen\`, \`last_seen\`).

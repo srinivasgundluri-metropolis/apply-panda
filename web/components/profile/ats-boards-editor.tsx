@@ -720,17 +720,19 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
       <div className="flex flex-col gap-8">
         <div className="rounded-md border bg-muted/30 px-4 py-3 space-y-3 text-sm text-muted-foreground leading-relaxed">
           <p>
-            <strong className="text-foreground">Titles and locations drive matches.</strong> By default we query{" "}
-            {DEFAULT_PORTAL_CATALOG_SIZE} employer ATS boards (Greenhouse/Ashby/Lever) that expose public JSON,
-            aggregate every open role that fits, then give you the {HOSTED_SCAN_MATCH_LIMIT} newest hits. Leave
-            the optional company filter empty to sweep all of those boards—set it only when you want postings
-            from employers whose catalog name contains your text (substring, case-insensitive).
+            <strong className="text-foreground">Titles and locations drive matches.</strong> When your deployment
+            sets <code className="text-xs">ADZUNA_APP_ID</code> and{" "}
+            <code className="text-xs">ADZUNA_APP_KEY</code>, scans query the Adzuna job index (many employers,
+            not limited to our built-in list) using your title phrases and location lines, then keep the top{" "}
+            <strong className="text-foreground">{HOSTED_SCAN_MATCH_LIMIT}</strong> after your include/exclude
+            rules. Without those env vars, scans fall back to our curated directory of roughly{" "}
+            {DEFAULT_PORTAL_CATALOG_SIZE} public ATS boards (Greenhouse/Ashby/Lever JSON). Leave the optional
+            company filter empty to search broadly—or set it to a substring filter on employer name (case-insensitive).
           </p>
           <p>
             <strong className="text-foreground">What you get per run:</strong> up to{" "}
-            <strong className="text-foreground">{HOSTED_SCAN_MATCH_LIMIT}</strong> roles total, ranked by the
-            newest timestamps the ATS exposes (anything without a timestamp sorts after dated posts). Chat
-            search uses the same cap.
+            <strong className="text-foreground">{HOSTED_SCAN_MATCH_LIMIT}</strong> roles, ranked newest-first when the
+            source provides dates. Chat search uses the same cap.
           </p>
           <ol className="list-decimal pl-5 space-y-1">
             <li>
@@ -764,8 +766,8 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
             Optional employer filter
           </Label>
           <p className="text-sm text-muted-foreground">
-            Empty = scan every board in our directory (~{DEFAULT_PORTAL_CATALOG_SIZE} employers). Filled =
-            substring match against each board&apos;s display name only (does not magically search the whole web).
+            Empty = no employer-name substring filter. With Adzuna enabled, postings can come from any indexed
+            company; otherwise this matches our ATS directory (~{DEFAULT_PORTAL_CATALOG_SIZE} boards).
           </p>
           <Input
             id="company-filter"

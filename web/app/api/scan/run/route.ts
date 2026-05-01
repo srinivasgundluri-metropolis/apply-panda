@@ -3,6 +3,7 @@ import { requireApiUser } from "@/lib/supabase/api";
 import {
   collectAllTitleFilteredPortalJobs,
   HOSTED_SCAN_MATCH_LIMIT,
+  hostedScanUsesAdzuna,
   loadPortalsConfigResolved,
 } from "@/lib/portal-scan";
 
@@ -10,7 +11,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * Streams portal scan progress as SSE, persists new rows to scan_history.
- * Uses title/location targeting plus a curated ATS directory, then persists the 100 freshest matches by ATS timestamps when available.
+ * Uses title/location targeting. With Adzuna API keys, scans the open job index (any employer).
+ * Otherwise falls back to a curated ATS directory. Persists up to 100 newest matches.
  */
 export async function GET() {
   const auth = await requireApiUser();
@@ -32,12 +34,19 @@ export async function GET() {
         try {
           send("stdout", "Loading portal configuration…");
           const cfg = await loadPortalsConfigResolved(auth.supabase, auth.user.id);
-          send("stdout", "Fetching ATS boards…");
+          send(
+            "stdout",
+            hostedScanUsesAdzuna()
+              ? "Fetching broad job search (Adzuna)…"
+              : "Fetching curated ATS boards…",
+          );
           const { jobs: ranked, companiesScanned } = await collectAllTitleFilteredPortalJobs(cfg);
           const candidates = ranked.slice(0, HOSTED_SCAN_MATCH_LIMIT);
           send(
             "stdout",
-            `Boards queried: ${companiesScanned} · matches (ranked newest-first): ${ranked.length} · saving top ${HOSTED_SCAN_MATCH_LIMIT}: ${candidates.length}`,
+            hostedScanUsesAdzuna()
+              ? `Broad source: Adzuna (${companiesScanned}) · matches after filters: ${ranked.length} · saving top ${HOSTED_SCAN_MATCH_LIMIT}: ${candidates.length}`
+              : `Boards queried: ${companiesScanned} · matches (ranked newest-first): ${ranked.length} · saving top ${HOSTED_SCAN_MATCH_LIMIT}: ${candidates.length}`,
           );
 
           const { data: existingRows, error: existingErr } = await auth.supabase

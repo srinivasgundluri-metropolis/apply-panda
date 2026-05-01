@@ -6,6 +6,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PortalsYamlConfig } from "@/lib/types";
 import { defaultCatalogCopy } from "@/lib/default-portal-catalog";
+import {
+  fetchAdzunaPortalJobs,
+  forceHostedAtsCatalogOnly,
+  isAdzunaJobSearchConfigured,
+} from "@/lib/adzuna-jobs";
 
 const USER_PORTALS_REQUIRED_MSG =
   "Portal scanner is not configured. Open Profile → ATS job targeting: add at least one title phrase or location line.";
@@ -340,11 +345,18 @@ function positiveLineCount(lines: string[] | undefined): number {
 }
 
 /**
- * Hosted scans always pull from ApplyPanda’s built-in ATS directory ({@link defaultCatalogCopy}).
- * Saved `tracked_companies` on the profile is ignored for fetch volume; optional `company_filter` still narrows which catalog boards run.
+ * When **not** using Adzuna broad search ({@link hostedScanUsesAdzuna}), hosted scans merge the user’s portals
+ * stub with ApplyPanda’s built-in ATS directory ({@link defaultCatalogCopy}).
+ * Saved `tracked_companies` on the profile is ignored for fetch volume then; optional `company_filter`
+ * still narrows which catalog boards run.
  */
 export function mergeUserPortalsWithDefaultCatalog(cfg: PortalsYamlConfig): PortalsYamlConfig {
   return { ...cfg, tracked_companies: defaultCatalogCopy() };
+}
+
+/** True when Vercel has Adzuna keys and the deploy is not forced back to the ATS sweep. */
+export function hostedScanUsesAdzuna(): boolean {
+  return isAdzunaJobSearchConfigured() && !forceHostedAtsCatalogOnly();
 }
 
 export function assertHostedScanHasTitleOrLocation(cfg: PortalsYamlConfig) {
@@ -465,6 +477,34 @@ export async function collectAllTitleFilteredPortalJobs(
   options: CollectPortalJobsOpts = {},
 ): Promise<{ config: PortalsYamlConfig; companiesScanned: number; jobs: PortalJob[] }> {
   assertHostedScanHasTitleOrLocation(cfg);
+
+  if (hostedScanUsesAdzuna()) {
+    const opts = {
+      ...hostedScanCollectOptions(cfg),
+      ...options,
+    };
+    const companyNeedle = (opts.companyNameContains ?? "").trim().toLowerCase();
+    const rawJobs = await fetchAdzunaPortalJobs(cfg, HOSTED_SCAN_MATCH_LIMIT);
+    const titleFilter = buildTitleFilter(cfg.title_filter);
+    const locationFilter = buildLocationFilter(cfg.location_filter);
+    let filtered = rawJobs.filter(
+      (j) =>
+        j.url.trim() &&
+        titleFilter(j.title) &&
+        locationFilter(j.location ?? ""),
+    );
+    if (companyNeedle) {
+      filtered = filtered.filter((j) =>
+        j.company.toLowerCase().includes(companyNeedle),
+      );
+    }
+    return {
+      config: cfg,
+      companiesScanned: 1,
+      jobs: sortHostedScanJobsByRecency(dedupeByUrl(filtered as PortalJob[])),
+    };
+  }
+
   const scanCfg = mergeUserPortalsWithDefaultCatalog(cfg);
   const titleFilter = buildTitleFilter(scanCfg.title_filter);
   const locationFilter = buildLocationFilter(scanCfg.location_filter);

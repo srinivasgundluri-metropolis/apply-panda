@@ -36,7 +36,7 @@ Set these in Vercel Project Settings -> Environment Variables:
 - Install command: `npm install`
 - Build command: `npm run build`
 
-**Tailored PDFs** (`/api/docs/generate`): uses `puppeteer-core` + `@sparticuz/chromium` on Vercel. Prefer **Pro** (or higher) with **≥120s** function duration and **≥1024 MB** memory so “CV + letter” runs don’t time out. Hobby’s 60 s limit may fail on **Generate both**.
+**Tailored PDFs** (`/api/docs/generate`): on **deployed** Vercel (Linux) this uses `puppeteer-core` + `@sparticuz/chromium`. On **`vercel dev`** locally, Chrome must be installed (same as `pnpm dev`): the Lambda Chromium bundle does not run on macOS/Windows. Prefer **Pro** (or higher) with **≥120s** function duration and **≥1024 MB** memory so “CV + letter” runs don’t time out. Hobby’s 60 s limit may fail on **Generate both**.
 
 ## 4) Smoke checklist
 

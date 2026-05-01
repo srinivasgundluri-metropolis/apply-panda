@@ -7,19 +7,37 @@
 import puppeteer from "puppeteer-core";
 import type { Browser } from "puppeteer-core";
 
-function isServerless(): boolean {
-  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+/**
+ * Use @sparticuz/chromium only on real serverless **Linux** runtimes.
+ *
+ * `vercel dev` sets `VERCEL=1` on your laptop (macOS/Windows); the bundled
+ * Chromium is Linux-only and throws "Failed to launch the browser process!".
+ * In that case we must use a local Chrome/Chromium install instead.
+ */
+function shouldUseBundledLambdaChromium(): boolean {
+  if (process.platform !== "linux") return false;
+  if (process.env.AWS_LAMBDA_FUNCTION_NAME) return true;
+  if (!process.env.VERCEL) return false;
+  if (process.env.VERCEL_ENV === "development") return false;
+  return true;
 }
 
 export async function launchPdfBrowser(): Promise<Browser> {
-  if (isServerless()) {
+  if (shouldUseBundledLambdaChromium()) {
     const chromium = (await import("@sparticuz/chromium")).default;
-    return puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: true,
-    });
+    try {
+      return await puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+      });
+    } catch (e) {
+      const inner = (e as Error).message ?? String(e);
+      throw new Error(
+        `${inner} (Vercel PDF: raise function memory or align @sparticuz/chromium with puppeteer-core if this persists.)`,
+      );
+    }
   }
 
   const exe =
@@ -30,11 +48,22 @@ export async function launchPdfBrowser(): Promise<Browser> {
         ? "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
         : "/usr/bin/google-chrome-stable");
 
-  return puppeteer.launch({
-    executablePath: exe,
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-  });
+  try {
+    return await puppeteer.launch({
+      executablePath: exe,
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+      ],
+    });
+  } catch (e) {
+    const inner = (e as Error).message ?? String(e);
+    throw new Error(
+      `${inner} Install Google Chrome or set PUPPETEER_EXECUTABLE_PATH to its binary (${exe}).`,
+    );
+  }
 }
 
 export async function htmlToPdfWithBrowser(

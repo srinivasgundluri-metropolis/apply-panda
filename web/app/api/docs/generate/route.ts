@@ -14,19 +14,14 @@ import {
   extractHostedHtmlBlock,
   type HostedTailorContext,
 } from "@/lib/hosted-tailor-html";
-import type { Browser } from "puppeteer-core";
-import { htmlToPdfWithBrowser, launchPdfBrowser } from "@/lib/pdf-from-html";
-import { hostedHtmlToDocxBuffer } from "@/lib/docx-from-html";
 import {
   slugTailoredSegment,
-  uploadUserPdf,
-  uploadUserTailoredDocx,
   uploadUserTailoredHtml,
 } from "@/lib/tailored-docs-storage";
 
 export const dynamic = "force-dynamic";
 
-/** Vercel Pro+ can raise; Hobby still caps at 60s wall time. */
+/** Vercel Pro+ can raise; Hobby still caps at 60s wall time. Model + uploads only (no Chromium). */
 export const maxDuration = 120;
 
 function sseSingleError(message: string): Response {
@@ -162,133 +157,37 @@ export async function POST(req: NextRequest) {
 
   const log: string[] = [];
 
-  const skipPdfEnv = ["1", "true", "yes"].includes(
-    (process.env.APPLYPANDA_SKIP_PDF ?? "").trim().toLowerCase(),
-  );
-  const skipDocxEnv = ["1", "true", "yes"].includes(
-    (process.env.APPLYPANDA_SKIP_DOCX ?? "").trim().toLowerCase(),
-  );
-  if (skipPdfEnv) {
-    log.push(
-      "ℹ️ APPLYPANDA_SKIP_PDF is set — skipping headless Chrome; saving printable HTML only.",
-    );
-  }
-  if (skipDocxEnv) {
-    log.push(
-      "ℹ️ APPLYPANDA_SKIP_DOCX is set — skipping Word export.",
-    );
-  }
-
-  /** TS flow analysis ignores assignments nested in `saveTailored`; use `.current`. */
-  const pdfBrowserRef: { current: Browser | null } = { current: null };
-
-  /** Save PDF when Chromium works (else HTML); also produce .docx from the same HTML when possible. */
-  const saveTailored = async (args: {
+  /** Upload print-oriented HTML only (PDF/DOCX are not produced). */
+  const saveTailoredHtml = async (args: {
     html: string;
-    pdfStoragePath: string;
-    pdfDisplayName: string;
-    htmlDisplayName: string;
+    storagePath: string;
+    displayName: string;
     kind: "cv" | "cl";
     metadata: Record<string, unknown>;
     logTag: string;
-  }): Promise<{ artifactPath: string; docxPath: string | null }> => {
-    const {
+  }): Promise<string> => {
+    const { html, storagePath, displayName, kind, metadata, logTag } = args;
+    log.push(`→ Saving ${logTag}: printable HTML (${displayName})`);
+    await uploadUserTailoredHtml({
+      supabase: auth.supabase,
+      userId: uid,
+      storagePath,
       html,
-      pdfStoragePath,
-      pdfDisplayName,
-      htmlDisplayName,
+      displayName,
       kind,
-      metadata,
-      logTag,
-    } = args;
-    const htmlStoragePath = pdfStoragePath.replace(/\.pdf$/i, ".html");
-    const docxStoragePath = pdfStoragePath.replace(/\.pdf$/i, ".docx");
-    const docxDisplayName = pdfDisplayName.replace(/\.pdf$/i, ".docx");
-
-    const tryDocx = async (): Promise<string | null> => {
-      if (skipDocxEnv) return null;
-      try {
-        const buf = await hostedHtmlToDocxBuffer(html, { variant: kind });
-        await uploadUserTailoredDocx({
-          supabase: auth.supabase,
-          userId: uid,
-          storagePath: docxStoragePath,
-          buffer: buf,
-          displayName: docxDisplayName,
-          kind,
-          metadata: { ...metadata, format: "docx" },
-        });
-        log.push(`✓ Saved ${logTag} DOCX → ${docxStoragePath}`);
-        return docxStoragePath;
-      } catch (e) {
-        log.push(`⚠️ DOCX (${logTag}): ${(e as Error).message}`);
-        return null;
-      }
-    };
-
-    const saveHtml = async (
-      reason: string,
-    ): Promise<{ artifactPath: string; docxPath: string | null }> => {
-      log.push(`→ ${reason} — ${logTag}: saving printable HTML (${htmlDisplayName})`);
-      await uploadUserTailoredHtml({
-        supabase: auth.supabase,
-        userId: uid,
-        storagePath: htmlStoragePath,
-        html,
-        displayName: htmlDisplayName,
-        kind,
-        metadata: {
-          ...metadata,
-          format: "html_printable",
-        },
-      });
-      log.push(`✓ Saved ${logTag} HTML → ${htmlStoragePath}`);
-      const docxPath = await tryDocx();
-      return { artifactPath: htmlStoragePath, docxPath };
-    };
-
-    if (skipPdfEnv) {
-      return saveHtml("PDF disabled by env");
-    }
-
-    try {
-      if (!pdfBrowserRef.current) {
-        pdfBrowserRef.current = await launchPdfBrowser();
-        log.push("✓ Headless browser ready");
-      }
-    } catch (e) {
-      return saveHtml(`Headless browser failed (${(e as Error).message})`);
-    }
-
-    try {
-      const pdfBuf = await htmlToPdfWithBrowser(pdfBrowserRef.current, html);
-      await uploadUserPdf({
-        supabase: auth.supabase,
-        userId: uid,
-        storagePath: pdfStoragePath,
-        buffer: pdfBuf,
-        displayName: pdfDisplayName,
-        kind,
-        metadata: { ...metadata, format: "pdf" },
-      });
-      log.push(`✓ Saved ${logTag} PDF → ${pdfStoragePath}`);
-      const docxPath = await tryDocx();
-      return { artifactPath: pdfStoragePath, docxPath };
-    } catch (e) {
-      log.push(
-        `⚠️ PDF rendering failed for ${logTag}: ${(e as Error).message}`,
-      );
-      return saveHtml("Falling back after PDF failure");
-    }
+      metadata: {
+        ...metadata,
+        format: "html_printable",
+      },
+    });
+    log.push(`✓ Saved ${logTag} HTML → ${storagePath}`);
+    return storagePath;
   };
 
   try {
     let atsStorage: string | null = null;
-    let atsDocxStorage: string | null = null;
     let fullStorage: string | null = null;
-    let fullDocxStorage: string | null = null;
     let clStorage: string | null = null;
-    let clDocxStorage: string | null = null;
 
     if (kind === "cv" || kind === "both") {
       log.push("→ Generating ATS HTML (model)…");
@@ -309,11 +208,10 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const atsOut = await saveTailored({
+      atsStorage = await saveTailoredHtml({
         html: atsHtml,
-        pdfStoragePath: `${basePath}-ats.pdf`,
-        pdfDisplayName: `${company} · ${role} · ATS CV.pdf`,
-        htmlDisplayName: `${company} · ${role} · ATS CV.html`,
+        storagePath: `${basePath}-ats.html`,
+        displayName: `${company} · ${role} · ATS CV.html`,
         kind: "cv",
         metadata: {
           application_num: applicationNum,
@@ -322,14 +220,11 @@ export async function POST(req: NextRequest) {
         },
         logTag: "ATS CV",
       });
-      atsStorage = atsOut.artifactPath;
-      atsDocxStorage = atsOut.docxPath;
 
-      const fullOut = await saveTailored({
+      fullStorage = await saveTailoredHtml({
         html: fullHtml,
-        pdfStoragePath: `${basePath}-full.pdf`,
-        pdfDisplayName: `${company} · ${role} · Full CV.pdf`,
-        htmlDisplayName: `${company} · ${role} · Full CV.html`,
+        storagePath: `${basePath}-full.html`,
+        displayName: `${company} · ${role} · Full CV.html`,
         kind: "cv",
         metadata: {
           application_num: applicationNum,
@@ -338,8 +233,6 @@ export async function POST(req: NextRequest) {
         },
         logTag: "full CV",
       });
-      fullStorage = fullOut.artifactPath;
-      fullDocxStorage = fullOut.docxPath;
     }
 
     if (kind === "cl" || kind === "both") {
@@ -352,11 +245,10 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const clOut = await saveTailored({
+      clStorage = await saveTailoredHtml({
         html: clHtml,
-        pdfStoragePath: `${basePath}-cover.pdf`,
-        pdfDisplayName: `${company} · ${role} · Cover letter.pdf`,
-        htmlDisplayName: `${company} · ${role} · Cover letter.html`,
+        storagePath: `${basePath}-cover.html`,
+        displayName: `${company} · ${role} · Cover letter.html`,
         kind: "cl",
         metadata: {
           application_num: applicationNum,
@@ -364,33 +256,30 @@ export async function POST(req: NextRequest) {
         },
         logTag: "cover letter",
       });
-      clStorage = clOut.artifactPath;
-      clDocxStorage = clOut.docxPath;
     }
 
     const appPatch: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
       pdf: "✅",
     };
+    /** Clear stale Word paths from prior product versions. */
+    if (kind === "cv" || kind === "both") {
+      appPatch.cv_ats_docx_path = null;
+      appPatch.cv_full_docx_path = null;
+    }
+    if (kind === "cl" || kind === "both") {
+      appPatch.cl_docx_path = null;
+    }
     if (atsStorage) {
       appPatch.cv_ats_path = atsStorage;
       appPatch.has_cv_ats = true;
-    }
-    if (atsDocxStorage) {
-      appPatch.cv_ats_docx_path = atsDocxStorage;
     }
     if (fullStorage) {
       appPatch.cv_full_path = fullStorage;
       appPatch.has_cv_full = true;
     }
-    if (fullDocxStorage) {
-      appPatch.cv_full_docx_path = fullDocxStorage;
-    }
     if (clStorage) {
       appPatch.cl_path = clStorage;
-    }
-    if (clDocxStorage) {
-      appPatch.cl_docx_path = clDocxStorage;
     }
 
     const { error: upApp } = await auth.supabase
@@ -405,18 +294,11 @@ export async function POST(req: NextRequest) {
 
     log.push("");
     log.push(
-      "✅ Done — files are under Documents / tracker (PDF and/or DOCX/HTML per environment; HTML → Print → Save as PDF if needed).",
+      "✅ Done — printable HTML is in Documents / tracker. Use browser Print → Save as PDF if you need a PDF.",
     );
     return sseFromText(log.join("\n"), 0);
   } catch (e) {
     const msg = (e as Error).message || "Document generation failed";
-    return sseFromText(
-      `${log.join("\n")}\n\n⚠️ ${msg}`,
-      1,
-    );
-  } finally {
-    if (pdfBrowserRef.current) {
-      await pdfBrowserRef.current.close().catch(() => {});
-    }
+    return sseFromText(`${log.join("\n")}\n\n⚠️ ${msg}`, 1);
   }
 }

@@ -31,12 +31,12 @@ async function jsonResponseAfterApply(instruction: string): Promise<NextResponse
   let message = result.chat_reply_md;
   if (regenCandidates.length > 0) {
     message +=
-      "\n\n---\n\n### Regenerate tailored PDFs?\n" +
-      "Because your canon files changed, consider **regenerating** tailored ATS + full CV PDFs " +
+      "\n\n---\n\n### Regenerate tailored documents?\n" +
+      "Because your canon files changed, consider **regenerating** tailored ATS + full CV HTML " +
       "and/or cover letters for roles **not** yet marked **Applied** — so downloads match your new résumé and profile.\n\n" +
       "Open **[Tracker → Tailored documents](/tracker)** for each evaluated job and use " +
       "**Regenerate CVs**, **Regenerate letter**, or **Regenerate CVs + letter** as needed.\n\n" +
-      "**Rows with tailored PDFs (Eligible to refresh)**\n\n";
+      "**Rows with tailored files (Eligible to refresh)**\n\n";
     message += regenCandidates
       .slice(0, 12)
       .map((r) => `- **#${r.num}** ${r.company} — ${r.role}`)

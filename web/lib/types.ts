@@ -49,27 +49,27 @@ export interface ApplicationRow {
   /** apply URL — derived from the report header or scan-history, never persisted back */
   url: string;
   /**
-   * True when at least one tailored CV artifact exists on disk — legacy
-   * single PDF counts; pair of ATS + full counts.
+   * True when at least one tailored CV artifact exists — legacy single file
+   * counts; pair of ATS + full counts.
    */
   hasCv: boolean;
-  /** True when ATS + full variants both exist OR a legacy unnamed PDF exists. */
+  /** True when ATS + full variants both exist OR a legacy single tailored file exists. */
   hasCvSuite: boolean;
   hasCvAts: boolean;
   hasCvFull: boolean;
   hasCvLegacyOnly: boolean;
-  /** UI-only — whether tailored cover letter PDF was found on disk */
+  /** UI-only — whether a tailored cover letter artifact exists */
   hasCl: boolean;
   /** Relative path — prefer ATS for canonical “CV” chip; see also full/legacy URLs. */
   cvPath: string | null;
-  /** Relative path to cover letter PDF (under output/cover-letters/), if found. */
+  /** Relative path to cover letter artifact in storage (often `.html`), if found. */
   clPath: string | null;
   /** Primary CV download URL (prefer ATS variant). */
   cvDownload: string | null;
   cvAtsDownload: string | null;
   cvFullDownload: string | null;
   cvLegacyDownload: string | null;
-  /** Optional Word companion for ATS CV (.docx). */
+  /** Legacy Word URLs only — cleared when user regenerates (HTML-only flow). */
   cvAtsDocxDownload: string | null;
   cvFullDocxDownload: string | null;
   clDownload: string | null;

@@ -1,13 +1,13 @@
 /**
  * UI-only "derived status" labels. The canonical status (the value stored
  * in `applications.md`) stays exactly what the user / pipeline wrote, but
- * we surface a richer label in the React UI when the row's filesystem
- * artifacts (CV PDF, cover letter PDF) tell us there's something more
+ * we surface a richer label in the React UI when tailored CV / cover-letter
+ * artifacts tell us there's something more
  * specific to say. Same logic as the Python dashboard `_derive_status_label`.
  */
 
 /**
- * @param hasCvSuite — ATS + Full CV PDFs exist, OR a legacy single-tailored PDF
+ * @param hasCvSuite — ATS + Full tailored CV artifacts exist, OR a legacy single tailored file
  *                    (counts as both for readiness). Cover letter is separate (`hasCl`).
  */
 export function deriveStatusLabel(
@@ -20,7 +20,7 @@ export function deriveStatusLabel(
       return {
         label: "🎯 Ready to Apply",
         hint:
-          "Tailored ATS + Full CV suite (or legacy CV), and cover letter, are on disk.",
+          "Tailored ATS + Full CV suite (or legacy CV), and cover letter, are saved.",
       };
     }
     if (hasCvSuite || hasCl) {

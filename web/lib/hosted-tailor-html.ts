@@ -1,6 +1,6 @@
 /**
- * Prompts + parsing for hosted Tailored docs: model emits print-ready HTML,
- * server renders PDFs (no local `generate-pdf.mjs`).
+ * Prompts + parsing for hosted Tailored docs: model emits print-ready HTML
+ * uploaded to storage as the canonical artifact (use Print → Save as PDF locally if needed).
  */
 
 function trimContext(s: string, max: number): string {
@@ -95,7 +95,7 @@ export function buildHostedCoverHtmlPrompt(ctx: HostedTailorContext): string {
     ? `\nVOICE / STRUCTURE PREFERENCES:\n${trimContext(ctx.coverLetterVoice, 4000)}\n`
     : "";
 
-  return `You are drafting a cover letter as a single printed page (HTML → PDF).
+  return `You are drafting a cover letter as a single print-ready HTML page (user may Print → Save as PDF if needed).
 
 ${HTML_RULES}
 

@@ -217,7 +217,7 @@ export function ApplicationsTable({ rows }: ApplicationsTableProps) {
                               ? "text-emerald-600 dark:text-emerald-400"
                               : "text-muted-foreground",
                           )}
-                          title="Tailored CV (legacy single PDF)"
+                          title="Tailored CV (legacy single artifact)"
                         >
                           {r.hasCv ? (
                             <CheckCircle2 className="size-3" />

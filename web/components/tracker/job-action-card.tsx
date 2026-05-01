@@ -40,7 +40,7 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
   const [bumpKey, setBumpKey] = React.useState(0);
 
   const applied = row.status.trim() === "Applied";
-  /** Replace on-disk tailored PDFs only before you mark the row Applied. */
+  /** Replace stored tailored HTML only before you mark the row Applied. */
   const canOverwrite = !applied;
 
   const trigger = (kind: DocKind, regenerate = false) => {
@@ -61,7 +61,9 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
       );
       return;
     }
-    toast.success("Tailored PDFs saved — check Documents & tracker downloads.");
+    toast.success(
+      "Tailored HTML saved — open from Documents or the downloads below.",
+    );
     router.refresh();
   };
 
@@ -122,33 +124,17 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
       <div className="flex flex-wrap gap-2">
         {row.cvAtsDownload ? (
           <Button asChild variant="secondary" size="sm">
-            <a href={row.cvAtsDownload} download>
+            <a href={row.cvAtsDownload} download title="ATS CV (HTML, print-ready)">
               <Download className="size-4" />
               ATS CV
             </a>
           </Button>
         ) : null}
-        {row.cvAtsDocxDownload ? (
-          <Button asChild variant="outline" size="sm">
-            <a href={row.cvAtsDocxDownload} download>
-              <Download className="size-4" />
-              ATS Word
-            </a>
-          </Button>
-        ) : null}
         {row.cvFullDownload ? (
           <Button asChild variant="secondary" size="sm">
-            <a href={row.cvFullDownload} download>
+            <a href={row.cvFullDownload} download title="Full CV (HTML, print-ready)">
               <Download className="size-4" />
               Full CV
-            </a>
-          </Button>
-        ) : null}
-        {row.cvFullDocxDownload ? (
-          <Button asChild variant="outline" size="sm">
-            <a href={row.cvFullDocxDownload} download>
-              <Download className="size-4" />
-              Full Word
             </a>
           </Button>
         ) : null}
@@ -176,17 +162,9 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
         ) : null}
         {row.hasCl && row.clDownload ? (
           <Button asChild variant="secondary" size="sm">
-            <a href={row.clDownload} download>
+            <a href={row.clDownload} download title="Cover letter (HTML, print-ready)">
               <Download className="size-4" />
-              Download Cover Letter
-            </a>
-          </Button>
-        ) : null}
-        {row.clDocxDownload ? (
-          <Button asChild variant="outline" size="sm">
-            <a href={row.clDocxDownload} download>
-              <Download className="size-4" />
-              Cover Letter (Word)
+              Cover Letter
             </a>
           </Button>
         ) : null}
@@ -285,7 +263,7 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
 
       {applied && (row.hasCvSuite || row.hasCl) ? (
         <p className="text-[11px] text-muted-foreground pt-1">
-          Applied — tailored PDFs are not regenerated (locked to what you
+          Applied — tailored documents are not regenerated (locked to what you
           submitted).
         </p>
       ) : null}

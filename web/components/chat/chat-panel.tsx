@@ -106,7 +106,135 @@ function formatInlineCode(s: string): string {
   return `\`${t.replace(/`/g, "'")}\``;
 }
 
-function buildLinkedInSearchReply(data: LinkedInResponse): {
+type ParsedJobSearchIntent = {
+  query: string;
+  wantsLinkedIn: boolean;
+  wantsAtsBoards: boolean;
+  timeRange: "24h" | "week" | "month" | "any";
+  maxAgeHours?: number;
+  companyNeedles: string[];
+  domainNeedles: string[];
+};
+
+function parseJobSearchIntent(text: string): ParsedJobSearchIntent {
+  const raw = text.trim();
+  const lower = raw.toLowerCase();
+  const wantsLinkedIn = /\blinked[\s-]?in\b/i.test(raw);
+  const wantsAtsBoards =
+    /\b(stanford jobs|stanford careers|jobs site|career site|greenhouse|ashby|lever|workday|ats)\b/i.test(
+      raw,
+    );
+
+  let timeRange: ParsedJobSearchIntent["timeRange"] = "any";
+  let maxAgeHours: number | undefined;
+  if (
+    /\byesterday\b/i.test(raw) ||
+    /\blast\s*24\s*(h|hr|hrs|hour|hours)\b/i.test(raw) ||
+    /\bin\s*last\s*24\s*(h|hr|hrs|hour|hours)\b/i.test(raw)
+  ) {
+    timeRange = "24h";
+    maxAgeHours = 24;
+  } else if (
+    /\b(last|past)\s*(7\s*(d|day|days)|week)\b/i.test(raw) ||
+    /\bthis week\b/i.test(raw)
+  ) {
+    timeRange = "week";
+    maxAgeHours = 24 * 7;
+  } else if (/\b(last|past)\s*(30\s*(d|day|days)|month)\b/i.test(raw)) {
+    timeRange = "month";
+    maxAgeHours = 24 * 30;
+  }
+
+  const companyNeedles: string[] = [];
+  if (/\bstanford\b/i.test(raw)) companyNeedles.push("stanford");
+
+  const domainNeedles: string[] = [];
+  if (
+    /\blife[\s-]?sciences?\b/i.test(raw) ||
+    /\bbiotech\b/i.test(raw) ||
+    /\bbiolog(y|ical)\b/i.test(raw) ||
+    /\bgenomics?\b/i.test(raw) ||
+    /\bbiomedical\b/i.test(raw) ||
+    /\bpharma\b/i.test(raw)
+  ) {
+    domainNeedles.push(
+      "life science",
+      "life sciences",
+      "biotech",
+      "biology",
+      "biological",
+      "genomics",
+      "biomedical",
+      "pharma",
+    );
+  }
+
+  let query = raw
+    .replace(/\bon\s+linkedin\b/gi, " ")
+    .replace(/\bon\s+[^,.\n]*jobs?\s+site\b/gi, " ")
+    .replace(/\b(last|past)\s*(24\s*(h|hr|hrs|hour|hours)|7\s*(d|day|days)|week|30\s*(d|day|days)|month)\b/gi, " ")
+    .replace(/\byesterday\b/gi, " ")
+    .replace(/\bthis week\b/gi, " ")
+    .replace(/\bstanford\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!query) query = raw;
+
+  return {
+    query,
+    wantsLinkedIn,
+    wantsAtsBoards,
+    timeRange,
+    ...(maxAgeHours ? { maxAgeHours } : {}),
+    companyNeedles,
+    domainNeedles,
+  };
+}
+
+function applyPostFilters(
+  jobs: LinkedInResult[],
+  intent: ParsedJobSearchIntent,
+): LinkedInResult[] {
+  const now = Date.now();
+  return jobs.filter((job) => {
+    const hay = `${job.company} ${job.title} ${job.url}`.toLowerCase();
+    if (
+      intent.companyNeedles.length > 0 &&
+      !intent.companyNeedles.some((needle) => hay.includes(needle))
+    ) {
+      return false;
+    }
+    if (
+      intent.domainNeedles.length > 0 &&
+      !intent.domainNeedles.some((needle) => hay.includes(needle))
+    ) {
+      return false;
+    }
+    if (intent.maxAgeHours) {
+      const t = Date.parse(job.posted || "");
+      if (!Number.isFinite(t)) return false;
+      const ageHours = (now - t) / (1000 * 60 * 60);
+      if (ageHours > intent.maxAgeHours) return false;
+    }
+    return true;
+  });
+}
+
+function buildAppliedFilterNote(intent: ParsedJobSearchIntent): string {
+  const bits: string[] = [];
+  if (intent.maxAgeHours) bits.push(`time <= ${intent.maxAgeHours}h`);
+  if (intent.companyNeedles.length > 0)
+    bits.push(`company: ${intent.companyNeedles.join(", ")}`);
+  if (intent.domainNeedles.length > 0) bits.push("domain: life sciences");
+  if (bits.length === 0) return "";
+  return `\n\n**Applied filters:** ${bits.join(" · ")}`;
+}
+
+function buildLinkedInSearchReply(
+  data: LinkedInResponse,
+  jobsOverride?: LinkedInResult[],
+  filterNote?: string,
+): {
   content: string;
   jobs: LinkedInResult[];
 } {
@@ -122,11 +250,12 @@ function buildLinkedInSearchReply(data: LinkedInResponse): {
     "",
     `**Fetched:** ${data.results.length} row(s). (_LinkedIn often paginates guest results—these are the first postings we could retrieve.)_`,
   ];
-  const jobs = data.results;
+  const jobs = jobsOverride ?? data.results;
   if (jobs.length === 0) {
     return {
       content:
         lines.join("\n") +
+        (filterNote ?? "") +
         "\n\n_No postings returned. Broaden keywords, try another location phrase, toggle **LinkedIn search first** off and ask for strategy—or run an ATS scan from **Pipeline → Run scan**._",
       jobs: [],
     };
@@ -136,10 +265,17 @@ function buildLinkedInSearchReply(data: LinkedInResponse): {
     (j) =>
       `| ${escapeTableCell(j.company)} | ${escapeTableCell(j.title)} | ${escapeTableCell(j.location)} | ${j.url} |`,
   );
-  return { content: `${lines.join("\n")}\n\n${header}\n${rows.join("\n")}`, jobs };
+  return {
+    content: `${lines.join("\n")}${filterNote ?? ""}\n\n${header}\n${rows.join("\n")}`,
+    jobs,
+  };
 }
 
-function buildPortalSearchReply(data: PortalSearchResponse): {
+function buildPortalSearchReply(
+  data: PortalSearchResponse,
+  jobsOverride?: LinkedInResult[],
+  filterNote?: string,
+): {
   content: string;
   jobs: LinkedInResult[];
 } {
@@ -154,11 +290,12 @@ function buildPortalSearchReply(data: PortalSearchResponse): {
     "",
     `**Fetched:** ${data.results.length} row(s) · title-filter pool: ${data.stats.title_filtered_total}`,
   ];
-  const jobs = data.results;
+  const jobs = jobsOverride ?? data.results;
   if (jobs.length === 0) {
     return {
       content:
         lines.join("\n") +
+        (filterNote ?? "") +
         "\n\n_No ATS postings matched. Broaden title keywords, loosen location filters in Profile → ATS job targeting, or run LinkedIn search._",
       jobs: [],
     };
@@ -168,21 +305,14 @@ function buildPortalSearchReply(data: PortalSearchResponse): {
     (j) =>
       `| ${escapeTableCell(j.company)} | ${escapeTableCell(j.title)} | ${escapeTableCell(j.location)} | ${j.url} |`,
   );
-  return { content: `${lines.join("\n")}\n\n${header}\n${rows.join("\n")}`, jobs };
+  return {
+    content: `${lines.join("\n")}${filterNote ?? ""}\n\n${header}\n${rows.join("\n")}`,
+    jobs,
+  };
 }
 
 function isLikelyJobSearchIntent(text: string): boolean {
   return /\b(job|jobs|role|roles|opening|openings|posted|hiring|career|careers|linkedin|greenhouse|ashby|lever|workday|last\s+\d+\s*(h|hr|hrs|hour|hours|day|days)|yesterday)\b/i.test(
-    text,
-  );
-}
-
-function wantsLinkedInSource(text: string): boolean {
-  return /\blinked[\s-]?in\b/i.test(text);
-}
-
-function wantsPortalSource(text: string): boolean {
-  return /\b(stanford jobs|stanford careers|jobs site|career site|greenhouse|ashby|lever|workday|ats)\b/i.test(
     text,
   );
 }
@@ -418,7 +548,10 @@ export function ChatPanel({
     }
   };
 
-  const runLinkedInJobSearch = async (message: string) => {
+  const runLinkedInJobSearch = async (
+    message: string,
+    intent: ParsedJobSearchIntent,
+  ) => {
     const userMsg: ChatMessage = {
       role: "user",
       content: message,
@@ -433,17 +566,22 @@ export function ChatPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          keywords: message,
+          keywords: intent.query,
           limit: 25,
           ...(profileLocationHint
             ? { location: profileLocationHint }
             : {}),
-          timeRange: "any",
+          timeRange: intent.timeRange,
         }),
       });
       const data = (await res.json()) as LinkedInResponse & { error?: string };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      const { content, jobs } = buildLinkedInSearchReply(data);
+      const filtered = applyPostFilters(data.results, intent);
+      const { content, jobs } = buildLinkedInSearchReply(
+        data,
+        filtered,
+        buildAppliedFilterNote(intent),
+      );
       setHistory((prev) => [
         ...prev,
         {
@@ -469,7 +607,10 @@ export function ChatPanel({
     }
   };
 
-  const runPortalJobSearch = async (message: string) => {
+  const runPortalJobSearch = async (
+    message: string,
+    intent: ParsedJobSearchIntent,
+  ) => {
     const userMsg: ChatMessage = {
       role: "user",
       content: message,
@@ -483,11 +624,16 @@ export function ChatPanel({
       const res = await fetch("/api/portals/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keywords: message, limit: 25 }),
+        body: JSON.stringify({ keywords: intent.query, limit: 25 }),
       });
       const data = (await res.json()) as PortalSearchResponse & { error?: string };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      const { content, jobs } = buildPortalSearchReply(data);
+      const filtered = applyPostFilters(data.results, intent);
+      const { content, jobs } = buildPortalSearchReply(
+        data,
+        filtered,
+        buildAppliedFilterNote(intent),
+      );
       setHistory((prev) => [
         ...prev,
         {
@@ -513,7 +659,10 @@ export function ChatPanel({
     }
   };
 
-  const runCombinedJobSearch = async (message: string) => {
+  const runCombinedJobSearch = async (
+    message: string,
+    intent: ParsedJobSearchIntent,
+  ) => {
     const userMsg: ChatMessage = {
       role: "user",
       content: message,
@@ -529,16 +678,16 @@ export function ChatPanel({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            keywords: message,
+            keywords: intent.query,
             limit: 25,
             ...(profileLocationHint ? { location: profileLocationHint } : {}),
-            timeRange: "any",
+            timeRange: intent.timeRange,
           }),
         }),
         fetch("/api/portals/search", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ keywords: message, limit: 25 }),
+          body: JSON.stringify({ keywords: intent.query, limit: 25 }),
         }),
       ]);
 
@@ -553,8 +702,17 @@ export function ChatPanel({
         );
       }
 
-      const li = liRes.ok ? buildLinkedInSearchReply(liData) : null;
-      const ats = portalRes.ok ? buildPortalSearchReply(portalData) : null;
+      const liFiltered = liRes.ok ? applyPostFilters(liData.results, intent) : [];
+      const atsFiltered = portalRes.ok
+        ? applyPostFilters(portalData.results, intent)
+        : [];
+      const filterNote = buildAppliedFilterNote(intent);
+      const li = liRes.ok
+        ? buildLinkedInSearchReply(liData, liFiltered, filterNote)
+        : null;
+      const ats = portalRes.ok
+        ? buildPortalSearchReply(portalData, atsFiltered, filterNote)
+        : null;
       const combinedJobs = [...(li?.jobs ?? []), ...(ats?.jobs ?? [])].slice(0, 40);
       const contentParts: string[] = [];
       if (li) contentParts.push(li.content);
@@ -592,17 +750,18 @@ export function ChatPanel({
     if (!message || streaming || resumeCoachLoading || linkedInSearching) return;
 
     if (!resumeCoachMode && linkedInSearchFirst && isLikelyJobSearchIntent(message)) {
-      const wantsLi = wantsLinkedInSource(message);
-      const wantsAts = wantsPortalSource(message);
+      const intent = parseJobSearchIntent(message);
+      const wantsLi = intent.wantsLinkedIn;
+      const wantsAts = intent.wantsAtsBoards;
       if (wantsLi && wantsAts) {
-        await runCombinedJobSearch(message);
+        await runCombinedJobSearch(message, intent);
         return;
       }
       if (wantsAts) {
-        await runPortalJobSearch(message);
+        await runPortalJobSearch(message, intent);
         return;
       }
-      await runLinkedInJobSearch(message);
+      await runLinkedInJobSearch(message, intent);
       return;
     }
 

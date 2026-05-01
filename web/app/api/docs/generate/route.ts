@@ -156,9 +156,9 @@ export async function POST(req: NextRequest) {
   };
 
   const uid = auth.user.id;
-  const stamp = `${new Date().toISOString().slice(0, 10)}-${Date.now()}`;
   const slug = slugTailoredSegment(`${company}-${role}`);
-  const basePath = `${uid}/tailored/${applicationNum}-${slug}-${stamp}`;
+  /** Stable per tracker row × role slug — same paths on regenerate so uploads + DB rows replace instead of accumulating. */
+  const basePath = `${uid}/tailored/${applicationNum}-${slug}`;
 
   const log: string[] = [];
 

@@ -86,20 +86,23 @@ async function uploadTailoredArtifact(params: UploadTailoredArtifactParams) {
     );
   }
 
-  const { error: insErr } = await supabase.from("documents").insert({
-    user_id: userId,
-    name: displayName,
-    storage_path: storagePath,
-    kind,
-    size: buffer.length,
-    mtime: Date.now(),
-    metadata,
-  });
+  const { error: upsertErr } = await supabase.from("documents").upsert(
+    {
+      user_id: userId,
+      name: displayName,
+      storage_path: storagePath,
+      kind,
+      size: buffer.length,
+      mtime: Date.now(),
+      metadata,
+    },
+    { onConflict: "user_id,storage_path" },
+  );
 
-  if (insErr) {
+  if (upsertErr) {
     await storageClient.storage.from("documents").remove([storagePath]);
     throw new Error(
-      `documents table insert failed: ${formatPostgrestError(insErr)}`,
+      `documents table upsert failed: ${formatPostgrestError(upsertErr)}`,
     );
   }
 }

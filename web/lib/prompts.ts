@@ -2,7 +2,7 @@
  * Prompt builders for Gemini-backed React app routes.
  *
  * Three flavors:
- *   - buildChatPrompt: ad-hoc Q&A and LinkedIn search guidance
+ *   - buildChatPrompt: ad-hoc Q&A (profile, tracker, strategy)
  *   - buildEvalPrompt: job evaluation guidance
  *   - buildCvPrompt / buildClPrompt: tailored document drafting
  */
@@ -33,7 +33,7 @@ export function buildChatPrompt(
 
 SCOPE — THIS CHAT TURN:
 - Focus on **profile, résumé/CV, evaluations, tracker, applications, targeting, and strategy** using the workspace paths below and anything the user pasted.
-- If they ask for **live job postings or a LinkedIn job dump**, say the dashboard routes that ask to **LinkedIn guest search** and renders a fixed results table (no LLM for that path)—you do **not** invent rows here. Suggest they rephrase as a listing ask ("show me jobs for… on LinkedIn") or use **Pipeline → Run scan** for ATS boards.
+- If they ask for **live job postings or a board scrape**, do **not** invent URLs. Point them to **Pipeline → Run scan** (ATS) or pasting specific posting URLs; this chat does not run LinkedIn job search.
 
 LOCAL WORKSPACE (prefer this for "what's in my tracker / scan history" questions):
 - \`data/scan-history.tsv\` — every job offer the portal scanner has ever seen (columns include \`company\`, \`title\`, \`url\`, \`portal\`, \`status\`, \`first_seen\`, \`last_seen\`).
@@ -43,15 +43,13 @@ LOCAL WORKSPACE (prefer this for "what's in my tracker / scan history" questions
 - \`portals.yml\` — the list of companies / portals the scanner is configured to track.
 
 LIVE TOOLS (legacy / local CLI vs hosted APIs):
-1. **LinkedIn Jobs (hosted UI path)** — Tabular search is triggered from chat for listing-style questions; not your model output. Never fabricate \`linkedin.com/jobs/view/…\` URLs in this stream.
+1. **ATS scans** — **Pipeline → Run scan** (HTTP only, no LLM for fetch) persists \`scan-history\`.
 
-2. **ATS scans** — **Pipeline → Run scan** (HTTP only, no LLM for fetch) persists \`scan-history\`.
+2. **Local CLI** — \`node scrape-linkedin.mjs\` is for local LinkedIn pulls outside this chat. Never fabricate LinkedIn URLs.
 
-3. **Local CLI** — \`node scrape-linkedin.mjs\` mirrors the hosted LinkedIn endpoint. Never fabricate LinkedIn URLs.
+3. **WebSearch / WebFetch** — company research when saved data is insufficient.
 
-4. **WebSearch / WebFetch** — company research when saved data is insufficient.
-
-5. **Shell** — restricted to:
+4. **Shell** — restricted to:
    - \`node scrape-linkedin.mjs ...\` and \`node add-to-scan.mjs ...\` when relevant in a local workspace.
    - Read-only inspection: \`grep\`, \`rg\`, \`head\`, \`tail\`, \`wc\`, \`cat\`, \`ls\`, \`awk\`/\`sed\` (no \`-i\`).
    Never run anything else. No \`scan.mjs\`, no \`merge-tracker.mjs\`, no \`gemini-eval.mjs\`, no \`generate-pdf.mjs\`, no \`git\`, no \`npm\`, no \`pip\`, no destructive commands.
@@ -66,10 +64,9 @@ HARD RULES:
 - If asked "evaluate this LinkedIn job", just emit the jobs-json block and reply: _"Click ⚡ Evaluate next to the row you want — it'll run the full A–G pipeline inline."_
 
 ANSWER STYLE:
-- For multi-row results, use a compact markdown table. Keep URLs as bare links, not "click here".
-- Sort job listings by recency descending.
+- When comparing pasted roles or tracker rows, a compact markdown table is fine; keep URLs as bare links.
 - Be concise — under 250 words unless the user asks for detail.
-- LinkedIn ToS reminder: this is for ${you}'s personal job search only.${historyBlock}
+- LinkedIn ToS reminder: any LinkedIn discussion is for ${you}'s personal job search only.${historyBlock}
 
 User: ${userMessage}
 `;

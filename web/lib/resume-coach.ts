@@ -19,6 +19,7 @@ const COACH_JSON_SCHEMA = `{
 export interface CoachApplyResult {
   chat_reply_md: string;
   updated: { cv: boolean; profile: boolean; coverLetterBase: boolean };
+  profile_fields_updated: string[];
 }
 
 function parseCoachJson(raw: string): Record<string, unknown> {
@@ -155,6 +156,26 @@ function normalizeNarrativeArraysInPatch(patch: Record<string, unknown>): void {
   if (breakers) narrative.deal_breakers = breakers;
 
   patch.narrative = narrative;
+}
+
+function summarizeUpdatedProfileFields(
+  patch: Record<string, unknown>,
+): string[] {
+  const out: string[] = [];
+  for (const [k, v] of Object.entries(patch)) {
+    if (
+      (k === "candidate" || k === "target_roles" || k === "narrative") &&
+      v &&
+      typeof v === "object" &&
+      !Array.isArray(v)
+    ) {
+      const nested = Object.keys(v as Record<string, unknown>);
+      for (const nk of nested) out.push(`${k}.${nk}`);
+      continue;
+    }
+    out.push(k);
+  }
+  return [...new Set(out)].sort();
 }
 
 export function buildInstructionFromUploadedResumeExtract(
@@ -296,6 +317,7 @@ ${COACH_JSON_SCHEMA}`;
   if (!chatReply) throw new Error("Model did not return chat_reply_md");
 
   const updated = { cv: false, profile: false, coverLetterBase: false };
+  let profileFieldsUpdated: string[] = [];
 
   const cvMd = parsed.cv_md;
   if (typeof cvMd === "string" && cvMd.trim()) {
@@ -328,6 +350,7 @@ ${COACH_JSON_SCHEMA}`;
   if (patch) {
     await writeProfile(patch as Profile);
     updated.profile = true;
+    profileFieldsUpdated = summarizeUpdatedProfileFields(patch);
   }
 
   const clBase = parsed.cover_letter_base_md;
@@ -336,7 +359,11 @@ ${COACH_JSON_SCHEMA}`;
     updated.coverLetterBase = true;
   }
 
-  return { chat_reply_md: chatReply, updated };
+  return {
+    chat_reply_md: chatReply,
+    updated,
+    profile_fields_updated: profileFieldsUpdated,
+  };
 }
 
 export async function readCoverLetterVoiceExcerpt(maxChars = 10000): Promise<string> {

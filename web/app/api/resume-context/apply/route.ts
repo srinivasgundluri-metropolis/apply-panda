@@ -29,6 +29,18 @@ async function jsonResponseAfterApply(instruction: string): Promise<NextResponse
     }));
 
   let message = result.chat_reply_md;
+  if (result.updated.profile) {
+    const fields =
+      result.profile_fields_updated.length > 0
+        ? result.profile_fields_updated.map((f) => `\`${f}\``).join(", ")
+        : "_profile patch applied (fields not enumerated)_";
+    message += `\n\n**Profile fields updated:** ${fields}`;
+  } else {
+    message += "\n\n**Profile fields updated:** _none_";
+  }
+  message += result.updated.cv
+    ? "\n\n**cv.md updated:** yes"
+    : "\n\n**cv.md updated:** no";
   if (regenCandidates.length > 0) {
     message +=
       "\n\n---\n\n### Regenerate tailored documents?\n" +

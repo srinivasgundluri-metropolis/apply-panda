@@ -10,6 +10,7 @@ import {
   fetchAdzunaPortalJobs,
   forceHostedAtsCatalogOnly,
   isAdzunaJobSearchConfigured,
+  portalsAdzunaWhatWhere,
 } from "@/lib/adzuna-jobs";
 
 const USER_PORTALS_REQUIRED_MSG =
@@ -485,14 +486,31 @@ export async function collectAllTitleFilteredPortalJobs(
     };
     const companyNeedle = (opts.companyNameContains ?? "").trim().toLowerCase();
     const rawJobs = await fetchAdzunaPortalJobs(cfg, HOSTED_SCAN_MATCH_LIMIT);
-    const titleFilter = buildTitleFilter(cfg.title_filter);
-    const locationFilter = buildLocationFilter(cfg.location_filter);
+    const { what, where } = portalsAdzunaWhatWhere(cfg);
+    /**
+     * Adzuna already applies `what` / `where`. Re-applying location *positives*
+     * client-side often drops every row because ATS snippets omit or abbreviate
+     * location vs profile text (e.g. "Chicago IL" vs ""). Only enforce **negatives**
+     * here when the query carried that axis; still run full title/location positives
+     * when we did not send the corresponding API param.
+     */
+    const titleNegOnly = buildSubstringTextFilter({
+      negative: cfg.title_filter?.negative,
+    });
+    const locNegOnly = buildSubstringTextFilter({
+      negative: cfg.location_filter?.negative,
+    });
     let filtered = rawJobs.filter(
-      (j) =>
-        j.url.trim() &&
-        titleFilter(j.title) &&
-        locationFilter(j.location ?? ""),
+      (j) => j.url.trim() && titleNegOnly(j.title) && locNegOnly(j.location ?? ""),
     );
+    if (!what.trim()) {
+      const titleFilter = buildTitleFilter(cfg.title_filter);
+      filtered = filtered.filter((j) => titleFilter(j.title));
+    }
+    if (!where.trim()) {
+      const locationFilter = buildLocationFilter(cfg.location_filter);
+      filtered = filtered.filter((j) => locationFilter(j.location ?? ""));
+    }
     if (companyNeedle) {
       filtered = filtered.filter((j) =>
         j.company.toLowerCase().includes(companyNeedle),

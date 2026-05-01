@@ -26,7 +26,11 @@ export function forceHostedAtsCatalogOnly(): boolean {
   );
 }
 
-function buildWhatWhere(cfg: PortalsYamlConfig): { what: string; where: string } {
+/** Title and location phrases we send as Adzuna `what` / `where`. */
+export function portalsAdzunaWhatWhere(cfg: PortalsYamlConfig): {
+  what: string;
+  where: string;
+} {
   const titles = (cfg.title_filter?.positive ?? [])
     .map((s) => String(s).trim())
     .filter(Boolean);
@@ -60,6 +64,17 @@ function locationLineFromHit(hit: Record<string, unknown>): string {
       .filter(Boolean);
     if (parts.length) return parts.join(", ");
   }
+
+  const flatCandidates = ["city", "county", "area", "location_name"];
+  const bits: string[] = [];
+  for (const key of flatCandidates) {
+    const v = hit[key];
+    if (typeof v === "string" && v.trim()) bits.push(v.trim());
+  }
+  if (bits.length) return [...new Set(bits)].join(", ");
+  const area = hit.area;
+  if (typeof area === "string" && area.trim()) return area.trim();
+
   return "";
 }
 
@@ -75,7 +90,7 @@ export async function fetchAdzunaPortalJobs(
     "us";
   const country = /^[a-z]{2}$/.test(rawCountry) ? rawCountry : "us";
 
-  const { what, where } = buildWhatWhere(cfg);
+  const { what, where } = portalsAdzunaWhatWhere(cfg);
 
   const cap = Math.min(100, Math.max(1, maxResults));
   const perPage = Math.min(50, cap);

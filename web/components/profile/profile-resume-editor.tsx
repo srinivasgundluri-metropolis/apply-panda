@@ -32,12 +32,32 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import type { Profile } from "@/lib/types";
+import type { PortalsYamlConfig, Profile } from "@/lib/types";
+import { normalizeHostedPortalsPayload } from "@/lib/hosted-profile-portals";
 import {
-  hostedPortalsYamlTextFromStored,
-  parseHostedPortalsYamlText,
-  PortalsYamlUserError,
-} from "@/lib/portals-yaml-submit";
+  mergeTrackedDeduped,
+  partitionTrackedAgainstCatalog,
+  trackedCompaniesFromCatalogKeys,
+} from "@/lib/portal-catalog-keys";
+import { extraBoardsFromUrlLines } from "@/lib/extra-portal-urls";
+import { EmployerBoardPicker } from "@/components/profile/employer-board-picker";
+
+function initialEmployerUiFromPortals(portals: Profile["portals"]) {
+  const norm = normalizeHostedPortalsPayload(portals ?? null);
+  const tracked = norm?.tracked_companies ?? [];
+  const { catalogKeys, extras } = partitionTrackedAgainstCatalog(tracked);
+  const extraUrlsText = extras
+    .map((e) => e.careers_url ?? e.api ?? "")
+    .filter(Boolean)
+    .join("\n");
+  return {
+    catalogKeys,
+    extraUrlsText,
+    companyFilter: norm?.company_filter ?? "",
+    titleNegCsv: norm?.title_filter?.negative?.join(", ") ?? "",
+    locNegCsv: norm?.location_filter?.negative?.join(", ") ?? "",
+  };
+}
 
 interface Props {
   initial: Profile;
@@ -123,12 +143,29 @@ export function ProfileResumeEditor({
     (initial.narrative?.deal_breakers ?? []).join("\n"),
   );
 
-  const [portalsYamlDraft, setPortalsYamlDraft] = React.useState(() =>
-    hostedPortalsYamlTextFromStored(initial.portals ?? null),
+  const [selectedEmployerKeys, setSelectedEmployerKeys] = React.useState<Set<string>>(() =>
+    initialEmployerUiFromPortals(initial.portals ?? null).catalogKeys,
+  );
+  const [extraUrlsText, setExtraUrlsText] = React.useState(
+    () => initialEmployerUiFromPortals(initial.portals ?? null).extraUrlsText,
+  );
+  const [companyFilter, setCompanyFilter] = React.useState(
+    () => initialEmployerUiFromPortals(initial.portals ?? null).companyFilter,
+  );
+  const [titleNegCsv, setTitleNegCsv] = React.useState(
+    () => initialEmployerUiFromPortals(initial.portals ?? null).titleNegCsv,
+  );
+  const [locNegCsv, setLocNegCsv] = React.useState(
+    () => initialEmployerUiFromPortals(initial.portals ?? null).locNegCsv,
   );
 
   React.useEffect(() => {
-    setPortalsYamlDraft(hostedPortalsYamlTextFromStored(initial.portals ?? null));
+    const u = initialEmployerUiFromPortals(initial.portals ?? null);
+    setSelectedEmployerKeys(u.catalogKeys);
+    setExtraUrlsText(u.extraUrlsText);
+    setCompanyFilter(u.companyFilter);
+    setTitleNegCsv(u.titleNegCsv);
+    setLocNegCsv(u.locNegCsv);
   }, [initial.portals]);
 
   const [cvMarkdown, setCvMarkdown] = React.useState(initialCvMarkdown);
@@ -196,17 +233,29 @@ export function ProfileResumeEditor({
         return;
       }
 
-      let portalsPayload: Profile["portals"];
-      try {
-        portalsPayload = parseHostedPortalsYamlText(portalsYamlDraft);
-      } catch (e) {
-        if (e instanceof PortalsYamlUserError) {
-          toast.error(e.message);
-          setSaving(false);
-          return;
-        }
-        throw e;
+      const fromCatalog = trackedCompaniesFromCatalogKeys(selectedEmployerKeys);
+      const { ok: extraRows, skippedLines } = extraBoardsFromUrlLines(extraUrlsText);
+      if (skippedLines.length > 0) {
+        toast.warning(
+          `${skippedLines.length} extra URL line(s) skipped — use Greenhouse, Ashby, Lever, or Workday board URLs only.`,
+        );
       }
+      const mergedTracked = mergeTrackedDeduped(fromCatalog, extraRows);
+      if (mergedTracked.length === 0) {
+        toast.error("Pick at least one employer from the list or add a supported careers URL below.");
+        setSaving(false);
+        return;
+      }
+
+      const titleNegLines = splitList(titleNegCsv);
+      const locNegLines = splitList(locNegCsv);
+      const cf = companyFilter.trim();
+      const portalsPayload: PortalsYamlConfig = {
+        tracked_companies: mergedTracked,
+        ...(cf ? { company_filter: cf.slice(0, 200) } : {}),
+        ...(titleNegLines.length ? { title_filter: { negative: titleNegLines } } : {}),
+        ...(locNegLines.length ? { location_filter: { negative: locNegLines } } : {}),
+      };
 
       const payload: Profile = {
         candidate: {
@@ -406,10 +455,10 @@ export function ProfileResumeEditor({
               <CardDescription className="text-sm leading-relaxed">
                 Pipeline <strong>Scan job boards</strong> and Chat ATS search match these role lines (plus{" "}
                 <strong>Location</strong> under Candidate). Employer URLs live in the{" "}
-                <a href="#profile-tracked-companies" className="underline font-medium">
-                  tracked_companies YAML block
+                <a href="#profile-employer-boards" className="underline font-medium">
+                  employer board picker
                 </a>{" "}
-                below (same as career-ops <code className="text-xs">portals.yml</code>).
+                below (same sources as career-ops <code className="text-xs">portals.yml</code>).
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
@@ -439,36 +488,78 @@ export function ProfileResumeEditor({
             </CardContent>
           </Card>
 
-          <Card id="profile-tracked-companies">
+          <Card id="profile-employer-boards">
             <CardHeader>
-              <CardTitle>
-                <code className="text-base font-mono tracking-tight">tracked_companies</code>
-                <span className="font-sans font-normal text-muted-foreground"> — employer boards (YAML)</span>
-              </CardTitle>
+              <CardTitle>Employer job boards</CardTitle>
               <CardDescription className="text-sm leading-relaxed space-y-2">
                 <p>
-                  This box <strong>is</strong> your <code className="text-xs">tracked_companies</code> list—the same key as in
-                  career-ops root <code className="text-xs">portals.yml</code>. Paste that whole file or only the{" "}
-                  <code className="text-xs">tracked_companies:</code> section. Scans hit Greenhouse/Ashby/Lever/Workday JSON
-                  endpoints only (same idea as <code className="text-xs">scan.mjs</code>), not arbitrary career-site scraping.
+                  Choose companies whose ATS feeds we poll (Greenhouse, Ashby, Lever, Workday). This replaces typing{" "}
+                  <code className="text-xs">tracked_companies</code> by hand — we still save the same JSON under the hood.
                 </p>
                 <p>
-                  Optional from <code className="text-xs">portals.yml</code>: <strong>company_filter</strong>,{" "}
-                  <strong>title_filter.negative</strong>, <strong>location_filter.negative</strong>.
+                  “US-heavy” / “EU / UK” are optional shortcuts (HQ guesses), not official registry filters. Prefer{" "}
+                  <strong>Select all</strong> or search when you want everything listed.
                 </p>
               </CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-2">
-              <Label htmlFor="portals_yaml" className="text-sm font-medium">
-                YAML starting with <code className="text-xs font-mono">tracked_companies:</code>
-              </Label>
-              <Textarea
-                id="portals_yaml"
-                value={portalsYamlDraft}
-                onChange={(e) => setPortalsYamlDraft(e.target.value)}
-                spellCheck={false}
-                className="min-h-[260px] font-mono text-xs leading-relaxed"
+            <CardContent className="flex flex-col gap-6">
+              <EmployerBoardPicker
+                selectedKeys={selectedEmployerKeys}
+                onSelectedKeysChange={setSelectedEmployerKeys}
               />
+
+              <div className="grid gap-2">
+                <Label htmlFor="extra_board_urls">Extra careers URLs (optional)</Label>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  One URL per line for boards <strong>not</strong> in the list above — same ATS types only.
+                </p>
+                <Textarea
+                  id="extra_board_urls"
+                  value={extraUrlsText}
+                  onChange={(e) => setExtraUrlsText(e.target.value)}
+                  spellCheck={false}
+                  rows={4}
+                  className="font-mono text-xs leading-relaxed"
+                  placeholder={"https://job-boards.greenhouse.io/acme"}
+                />
+              </div>
+
+              <div className="grid gap-1.5 max-w-xl">
+                <Label htmlFor="company_filter">Narrow boards by name (optional)</Label>
+                <Input
+                  id="company_filter"
+                  value={companyFilter}
+                  onChange={(e) => setCompanyFilter(e.target.value)}
+                  placeholder="Substring of employer display name"
+                  maxLength={200}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Same as <code className="text-xs">company_filter</code> in portals.yml — limits which selected boards run.
+                </p>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="title_neg">Exclude title keywords (optional)</Label>
+                  <Input
+                    id="title_neg"
+                    value={titleNegCsv}
+                    onChange={(e) => setTitleNegCsv(e.target.value)}
+                    placeholder="Junior, Intern, …"
+                  />
+                  <p className="text-xs text-muted-foreground">Comma-separated · maps to title_filter.negative</p>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="loc_neg">Exclude location keywords (optional)</Label>
+                  <Input
+                    id="loc_neg"
+                    value={locNegCsv}
+                    onChange={(e) => setLocNegCsv(e.target.value)}
+                    placeholder="EMEA, Poland, …"
+                  />
+                  <p className="text-xs text-muted-foreground">Comma-separated · maps to location_filter.negative</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -520,7 +611,7 @@ export function ProfileResumeEditor({
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground max-w-lg">
-          Saves targeting, portals YAML snippet, and résumé markdown so ATS scans stay aligned with local career-ops.
+          Saves targeting, employer board picks, and résumé markdown so ATS scans stay aligned with career-ops.
         </p>
         <Button type="submit" disabled={saving} size="lg">
           {saving ? (

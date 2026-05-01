@@ -28,9 +28,9 @@ export function ScanRunner() {
           >
             Profile → Targeting
           </Link>{" "}
-          (primary/secondary roles, archetypes, and candidate location). Employer boards come from{" "}
-          <code className="rounded bg-muted px-1 py-px text-[11px]">tracked_companies</code> in your pasted portals YAML
-          (same as local <code className="rounded bg-muted px-1 py-px text-[11px]">portals.yml</code>). Each run ranks
+          (primary/secondary roles, archetypes, and candidate location).           Employer boards come from your Profile employer picker (stored like{" "}
+          <code className="rounded bg-muted px-1 py-px text-[11px]">portals.yml</code>{" "}
+          <code className="rounded bg-muted px-1 py-px text-[11px]">tracked_companies</code>). Each run ranks
           matches by recency when the ATS exposes dates and
           saves up to 100 newest URLs to Scan results (skipping ones you already stored).
         </p>

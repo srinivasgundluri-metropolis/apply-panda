@@ -11,6 +11,9 @@ export const dynamic = "force-dynamic";
 /**
  * Streams portal scan progress as SSE, persists new rows to scan_history.
  * Uses title/location targeting against curated ATS boards. Persists up to 100 newest matches.
+ *
+ * **No LLM** — fetching is HTTP-only via `@/lib/portal-scan`. Do not import `gemini-runtime`
+ * or other model clients here.
  */
 export async function GET() {
   const auth = await requireApiUser();

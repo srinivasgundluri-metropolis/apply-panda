@@ -1,6 +1,12 @@
 /**
  * Shared ATS fetch (Greenhouse, Ashby, Lever, Workday CXS) + portals.yml filters.
  * Used by hosted portal scan (persist) and chat portal search (read-only).
+ *
+ * **Contract — no LLM here:** This module performs only deterministic HTTP + JSON
+ * filtering/sorting/dedupe. Hosted job-board scanning stays zero-token aligned with `scan.mjs`.
+ * LLM usage in the web app belongs to Chat (`/api/chat/stream`), tailored docs
+ * (`/api/docs/generate`), evaluation (`/api/eval/stream`), résumé coach, outreach, etc. — not
+ * to `/api/scan/run` or `/api/portals/search`.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";

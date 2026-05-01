@@ -11,6 +11,7 @@ import { SseStream } from "@/components/sse-stream";
 
 /**
  * Pipeline tab — calls `/api/scan/run` (SSE) to fetch ATS boards and persist new rows to scan_history.
+ * Backend is HTTP-only (`portal-scan.ts`); LLM is reserved for Chat, docs, evaluation, etc.
  */
 export function ScanRunner() {
   const [running, setRunning] = React.useState(false);
@@ -39,7 +40,8 @@ export function ScanRunner() {
           <div className="min-w-0 max-w-xl">
             <p className="font-medium text-base">Scan job boards</p>
             <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-              Queries the built-in ATS board list with your saved title &amp; location rules, ranks matches by newest
+              Runs <strong className="text-foreground font-medium">without any LLM</strong> — direct ATS HTTP APIs only
+              (same idea as local <code className="rounded bg-muted px-1 py-px text-xs">scan.mjs</code>). Queries the built-in ATS board list with your saved title &amp; location rules, ranks matches by newest
               timestamps where available, then writes up to 100 postings to{" "}
               <strong>Scan results</strong>{" "}
               <Badge variant="outline" className="text-[10px] mx-0.5 align-middle">

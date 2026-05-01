@@ -2,6 +2,7 @@ import { SSE_HEADERS } from "@/lib/shell";
 import { requireApiUser } from "@/lib/supabase/api";
 import {
   collectAllTitleFilteredPortalJobs,
+  HOSTED_SCAN_MATCH_LIMIT,
   loadPortalsConfigResolved,
 } from "@/lib/portal-scan";
 
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Streams portal scan progress as SSE, persists new rows to scan_history.
- * Uses Greenhouse, Ashby, Lever, Workday CXS APIs + per-user `profiles.data.portals` only (no generic bundled list).
+ * Uses title/location targeting plus a curated ATS directory, then persists the 100 freshest matches by ATS timestamps when available.
  */
 export async function GET() {
   const auth = await requireApiUser();
@@ -32,9 +33,12 @@ export async function GET() {
           send("stdout", "Loading portal configuration…");
           const cfg = await loadPortalsConfigResolved(auth.supabase, auth.user.id);
           send("stdout", "Fetching ATS boards…");
-          const { jobs: candidates, companiesScanned } =
-            await collectAllTitleFilteredPortalJobs(cfg);
-          send("stdout", `Boards queried: ${companiesScanned} · listings after title filter: ${candidates.length}`);
+          const { jobs: ranked, companiesScanned } = await collectAllTitleFilteredPortalJobs(cfg);
+          const candidates = ranked.slice(0, HOSTED_SCAN_MATCH_LIMIT);
+          send(
+            "stdout",
+            `Boards queried: ${companiesScanned} · matches (ranked newest-first): ${ranked.length} · saving top ${HOSTED_SCAN_MATCH_LIMIT}: ${candidates.length}`,
+          );
 
           const { data: existingRows, error: existingErr } = await auth.supabase
             .from("scan_history")

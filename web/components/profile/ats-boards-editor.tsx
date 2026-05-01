@@ -1,10 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -15,22 +12,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DEFAULT_PORTAL_CATALOG_SIZE } from "@/lib/default-portal-catalog";
-import { detectPortalApi, parseWorkdayCareersUrl } from "@/lib/portal-scan";
-import type { PortalsTrackedCompany, PortalsYamlConfig } from "@/lib/types";
-
-export type AtsPlatform = "ashby" | "greenhouse" | "lever" | "workday" | "custom";
-
-export type CompanyFormRow = {
-  id: string;
-  name: string;
-  platform: AtsPlatform;
-  /** Board slug, or full careers URL when platform is custom */
-  slugOrUrl: string;
-  enabled: boolean;
-};
-
-/** How the user prefers to capture board URLs (both resolve to tracked_companies JSON). */
-export type BoardEntryMode = "tables" | "bulk";
+import { HOSTED_SCAN_MATCH_LIMIT } from "@/lib/portal-scan";
+import type { PortalsYamlConfig } from "@/lib/types";
 
 type TitlePreset = "any" | "engineering" | "ml_ai" | "product" | "usa_wide" | "custom";
 
@@ -391,7 +374,7 @@ const LOCATION_PRESET_POSITIVE: Record<
 
 const ATS_CURATION_STORAGE_KEY = "apply-panda:ats-boards-targeting-reminders:v1";
 
-type StoredCuration = { pledgesEmployersCurated?: boolean; pledgesFiltersNonSpam?: boolean };
+type StoredCuration = { pledgesFiltersNonSpam?: boolean };
 
 function readStoredCuration(): StoredCuration {
   if (typeof window === "undefined") return {};
@@ -422,137 +405,6 @@ const NEGATIVE_PRESETS = [
   { key: "iOS", label: "iOS" },
   { key: "Android", label: "Android" },
 ] as const;
-
-function newRowId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function titleCaseSlug(s: string): string {
-  return s
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-    .trim();
-}
-
-/** Label for CSV row / bulk paste (not stored in portals JSON besides company name field). */
-export function guessCompanyLabelFromUrl(url: string): string {
-  const trimmed = url.trim();
-  try {
-    const wdGuess = parseWorkdayCareersUrl(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
-    if (wdGuess) return titleCaseSlug(wdGuess.tenant);
-    const ashby = trimmed.match(/jobs\.ashbyhq\.com\/([^/?#]+)/i);
-    if (ashby) return titleCaseSlug(ashby[1]);
-    const lever = trimmed.match(/jobs\.lever\.co\/([^/?#]+)/i);
-    if (lever) return titleCaseSlug(lever[1]);
-    const gh = trimmed.match(/job-boards(?:\.eu)?\.greenhouse\.io\/([^/?#]+)/i);
-    if (gh) return titleCaseSlug(gh[1]);
-    const hostname = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`)
-      .hostname.replace(/^www\./, "")
-      .split(".")[0];
-    return hostname ? titleCaseSlug(hostname) : "Careers board";
-  } catch {
-    return "Careers board";
-  }
-}
-
-export function inferRowFromCompany(c: PortalsTrackedCompany): CompanyFormRow {
-  const url = (c.careers_url ?? "").trim();
-  const nameSeed = (c.name ?? "").trim();
-  if (!url) {
-    return {
-      id: newRowId(),
-      name: nameSeed,
-      platform: "custom",
-      slugOrUrl: "",
-      enabled: c.enabled !== false,
-    };
-  }
-  const displayName = nameSeed || guessCompanyLabelFromUrl(url);
-  const wd = parseWorkdayCareersUrl(url);
-  if (wd) {
-    const canonical = `${wd.calypsoOrigin}/${wd.siteId}`;
-    return {
-      id: newRowId(),
-      name: displayName,
-      platform: "workday",
-      slugOrUrl: canonical,
-      enabled: c.enabled !== false,
-    };
-  }
-  const ashby = url.match(/jobs\.ashbyhq\.com\/([^/?#]+)/i);
-  if (ashby) {
-    return {
-      id: newRowId(),
-      name: displayName,
-      platform: "ashby",
-      slugOrUrl: ashby[1],
-      enabled: c.enabled !== false,
-    };
-  }
-  const lever = url.match(/jobs\.lever\.co\/([^/?#]+)/i);
-  if (lever) {
-    return {
-      id: newRowId(),
-      name: displayName,
-      platform: "lever",
-      slugOrUrl: lever[1],
-      enabled: c.enabled !== false,
-    };
-  }
-  const gh = url.match(/job-boards(?:\.eu)?\.greenhouse\.io\/([^/?#]+)/i);
-  if (gh) {
-    return {
-      id: newRowId(),
-      name: displayName,
-      platform: "greenhouse",
-      slugOrUrl: gh[1],
-      enabled: c.enabled !== false,
-    };
-  }
-  return {
-    id: newRowId(),
-    name: displayName,
-    platform: "custom",
-    slugOrUrl: url,
-    enabled: c.enabled !== false,
-  };
-}
-
-export function buildCareersUrl(row: CompanyFormRow): string {
-  const raw = row.slugOrUrl.trim();
-  if (!raw) return "";
-  if (row.platform === "custom" || row.platform === "workday") return raw;
-  const slug = raw.replace(/^\/+/, "").split("/")[0] ?? "";
-  if (!slug) return "";
-  switch (row.platform) {
-    case "ashby":
-      return `https://jobs.ashbyhq.com/${slug}`;
-    case "lever":
-      return `https://jobs.lever.co/${slug}`;
-    case "greenhouse":
-      return `https://job-boards.greenhouse.io/${slug}`;
-    default:
-      return raw;
-  }
-}
-
-function rowsToTrackedCompanies(rows: CompanyFormRow[]): PortalsTrackedCompany[] {
-  return rows
-    .map((r) => {
-      const careers_url = buildCareersUrl(r);
-      if (!careers_url) return null;
-      const label = r.name.trim() || guessCompanyLabelFromUrl(careers_url);
-      return {
-        name: label,
-        enabled: r.enabled,
-        careers_url,
-      };
-    })
-    .filter(Boolean) as PortalsTrackedCompany[];
-}
 
 function parsePositiveLines(s: string): string[] {
   return s
@@ -602,9 +454,6 @@ function detectLocationPreset(lines: string[]): LocationPreset {
 }
 
 export type ParsedPortalsForm = {
-  boardEntryMode: BoardEntryMode;
-  bulkPaste: string;
-  rows: CompanyFormRow[];
   titlePreset: TitlePreset;
   positiveLines: string;
   negativePresetKeys: Set<string>;
@@ -616,9 +465,6 @@ export type ParsedPortalsForm = {
 
 export function parsePortalsToFormState(cfg: PortalsYamlConfig | null | undefined): ParsedPortalsForm {
   const emptyNegative = (): ParsedPortalsForm => ({
-    boardEntryMode: "tables",
-    bulkPaste: "",
-    rows: [],
     titlePreset: "any",
     positiveLines: "",
     negativePresetKeys: new Set(),
@@ -631,13 +477,6 @@ export function parsePortalsToFormState(cfg: PortalsYamlConfig | null | undefine
   if (!cfg || typeof cfg !== "object") {
     return emptyNegative();
   }
-  const companies = cfg.tracked_companies ?? [];
-  const rows = companies.map((c) => inferRowFromCompany(c));
-  const bulkPaste = rows
-    .map((r) => buildCareersUrl(r))
-    .filter(Boolean)
-    .join("\n");
-
   const pos = (cfg.title_filter?.positive ?? []).map(String);
   const neg = (cfg.title_filter?.negative ?? []).map(String);
   const negativePresetKeys = new Set<string>();
@@ -652,9 +491,6 @@ export function parsePortalsToFormState(cfg: PortalsYamlConfig | null | undefine
   const lNeg = (cfg.location_filter?.negative ?? []).map(String);
 
   return {
-    boardEntryMode: "tables",
-    bulkPaste,
-    rows,
     titlePreset: detectTitlePreset(pos),
     positiveLines: pos.join("\n"),
     negativePresetKeys,
@@ -675,31 +511,6 @@ function parseSeed(portalsSeed: string): ParsedPortalsForm {
   } catch {
     return parsePortalsToFormState(null);
   }
-}
-
-function bulkPasteToRows(text: string): CompanyFormRow[] {
-  const lines = text.split(/\n/).map((l) => l.trim());
-  const out: CompanyFormRow[] = [];
-  for (const line of lines) {
-    if (!line || line.startsWith("#")) continue;
-    let url = line;
-    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
-    if (!detectPortalApi({ careers_url: url })) continue;
-    const name = guessCompanyLabelFromUrl(url);
-    out.push(inferRowFromCompany({ careers_url: url, name, enabled: true }));
-  }
-  return out;
-}
-
-function effectiveRows(
-  mode: BoardEntryMode,
-  bulkPaste: string,
-  tableRows: CompanyFormRow[],
-): CompanyFormRow[] {
-  if (mode === "bulk") {
-    return bulkPasteToRows(bulkPaste);
-  }
-  return tableRows;
 }
 
 function mergeTitleFilter(opts: {
@@ -742,17 +553,13 @@ function mergeLocationFilter(opts: {
 }
 
 function buildConfigFromState(args: {
-  boardEntryMode: BoardEntryMode;
-  bulkPaste: string;
-  rows: CompanyFormRow[];
   positiveLines: string;
   negativePresetKeys: Set<string>;
   negativeExtraLines: string;
   locationPositiveLines: string;
   locationNegativeLines: string;
 }): PortalsYamlConfig | null {
-  const eff = effectiveRows(args.boardEntryMode, args.bulkPaste, args.rows);
-  const tracked_companies = rowsToTrackedCompanies(eff);
+  const tracked_companies: PortalsYamlConfig["tracked_companies"] = [];
 
   const title_filter = mergeTitleFilter({
     positiveLines: args.positiveLines,
@@ -767,25 +574,12 @@ function buildConfigFromState(args: {
 
   const tp = title_filter?.positive?.length ?? 0;
   const lp = location_filter?.positive?.length ?? 0;
-  if (tracked_companies.length === 0 && tp === 0 && lp === 0) return null;
+  if (tp === 0 && lp === 0) return null;
 
   const out: PortalsYamlConfig = { tracked_companies };
   if (title_filter) out.title_filter = title_filter;
   if (location_filter) out.location_filter = location_filter;
   return out;
-}
-
-function bulkPasteHasUnsupportedLines(text: string): boolean {
-  const lines = text
-    .split(/\n/)
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0 && !l.startsWith("#"));
-  for (const raw of lines) {
-    let url = raw;
-    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
-    if (!detectPortalApi({ careers_url: url })) return true;
-  }
-  return false;
 }
 
 export type AtsBoardsEditorHandle = {
@@ -800,11 +594,6 @@ export type AtsBoardsEditorProps = {
 export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoardsEditorProps>(
   function AtsBoardsEditor({ portalsSeed }, ref) {
     const s0 = parseSeed(portalsSeed);
-    const [boardEntryMode, setBoardEntryMode] = React.useState<BoardEntryMode>(
-      s0.boardEntryMode,
-    );
-    const [bulkPaste, setBulkPaste] = React.useState(s0.bulkPaste);
-    const [rows, setRows] = React.useState<CompanyFormRow[]>(() => s0.rows);
     const [titlePreset, setTitlePreset] = React.useState<TitlePreset>(s0.titlePreset);
     const [positiveLines, setPositiveLines] = React.useState(s0.positiveLines);
     const [negativePresetKeys, setNegativePresetKeys] = React.useState<Set<string>>(
@@ -823,7 +612,6 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
     );
 
     const [pledges, setPledges] = React.useState<StoredCuration>({
-      pledgesEmployersCurated: false,
       pledgesFiltersNonSpam: false,
     });
 
@@ -844,9 +632,6 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
       if (portalsSeed === lastSeedRef.current) return;
       lastSeedRef.current = portalsSeed;
       const next = parseSeed(portalsSeed);
-      setBoardEntryMode(next.boardEntryMode);
-      setBulkPaste(next.bulkPaste);
-      setRows(next.rows);
       setTitlePreset(next.titlePreset);
       setPositiveLines(next.positiveLines);
       setNegativePresetKeys(new Set(next.negativePresetKeys));
@@ -863,27 +648,6 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
         else n.add(key);
         return n;
       });
-    };
-
-    const addRow = () => {
-      setRows((prev) => [
-        ...prev,
-        {
-          id: newRowId(),
-          name: "",
-          platform: "ashby",
-          slugOrUrl: "",
-          enabled: true,
-        },
-      ]);
-    };
-
-    const updateRow = (id: string, patch: Partial<CompanyFormRow>) => {
-      setRows((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));
-    };
-
-    const removeRow = (id: string) => {
-      setRows((prev) => prev.filter((r) => r.id !== id));
     };
 
     const handleTitlePreset = (preset: TitlePreset) => {
@@ -903,43 +667,15 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
       () => ({
         getConfig: () =>
           buildConfigFromState({
-            boardEntryMode,
-            bulkPaste,
-            rows,
             positiveLines,
             negativePresetKeys,
             negativeExtraLines,
             locationPositiveLines,
             locationNegativeLines,
           }),
-        hasIncompleteCompanyRows: () => {
-          const eff = effectiveRows(boardEntryMode, bulkPaste, rows);
-          if (boardEntryMode === "bulk") {
-            const nonempty = bulkPaste
-              .split(/\n/)
-              .map((l) => l.trim())
-              .filter((l) => l.length && !l.startsWith("#"));
-            if (nonempty.some((line) => {
-              let u = line;
-              if (!/^https?:\/\//i.test(u)) u = `https://${u}`;
-              return !detectPortalApi({ careers_url: u });
-            }))
-              return true;
-          }
-          return eff.some((r) => {
-            const blank = !r.name.trim() && !r.slugOrUrl.trim();
-            if (blank) return false;
-            const url = buildCareersUrl(r);
-            if (r.name.trim() && !url) return true;
-            if (!url) return false;
-            return !detectPortalApi({ careers_url: url });
-          });
-        },
+        hasIncompleteCompanyRows: () => false,
       }),
       [
-        boardEntryMode,
-        bulkPaste,
-        rows,
         positiveLines,
         negativePresetKeys,
         negativeExtraLines,
@@ -950,9 +686,6 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
 
     const previewJson = React.useMemo(() => {
       const cfg = buildConfigFromState({
-        boardEntryMode,
-        bulkPaste,
-        rows,
         positiveLines,
         negativePresetKeys,
         negativeExtraLines,
@@ -961,9 +694,6 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
       });
       return cfg ? JSON.stringify(cfg, null, 2) : "";
     }, [
-      boardEntryMode,
-      bulkPaste,
-      rows,
       positiveLines,
       negativePresetKeys,
       negativeExtraLines,
@@ -975,59 +705,41 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
       <div className="flex flex-col gap-8">
         <div className="rounded-md border bg-muted/30 px-4 py-3 space-y-3 text-sm text-muted-foreground leading-relaxed">
           <p>
-            <strong className="text-foreground">Start with titles and locations.</strong> Optional employer
-            boards narrow which ATS sites we hit; matching title and location fragments is{" "}
-            <strong className="text-foreground">still required signal</strong> when you rely on defaults,
-            and it keeps noise down when you add your own boards.
+            <strong className="text-foreground">Pick titles and locations only.</strong> We scan a fixed list
+            of about {DEFAULT_PORTAL_CATALOG_SIZE} employer ATS boards that support direct API reads (no picking
+            companies here). Matches use simple substring checks on each posting&apos;s role title and location
+            text.
           </p>
           <p>
-            <strong className="text-foreground">How scanning works:</strong> Each run pulls postings from ATS
-            boards you list in Step&nbsp;4, or — if that list is empty — from roughly{" "}
-            {DEFAULT_PORTAL_CATALOG_SIZE} built-in ATS sites. Filters use substring checks on title and
-            location strings; chat can tighten further later. No “every company globally” endpoint exists.
+            <strong className="text-foreground">What you get per run:</strong> up to{" "}
+            <strong className="text-foreground">{HOSTED_SCAN_MATCH_LIMIT}</strong> roles total, ranked by the
+            newest timestamps the ATS exposes (anything without a timestamp sorts after dated posts). Chat
+            search uses the same cap.
           </p>
           <ol className="list-decimal pl-5 space-y-1">
             <li>
-              Included <strong className="text-foreground">titles</strong> (OR semantics)
+              Included <strong className="text-foreground">titles</strong> (OR across lines)
             </li>
             <li>
-              Optional <strong className="text-foreground">location</strong> includes (and excludes)
+              <strong className="text-foreground">Locations</strong> — includes and optional excludes (OR across
+              include lines)
             </li>
             <li>
-              Optional title <strong className="text-foreground">excludes</strong>
-            </li>
-            <li>
-              Optional employers / <strong className="text-foreground">ATS board URLs</strong>
+              Optional <strong className="text-foreground">title excludes</strong> to drop noisy postings
             </li>
           </ol>
           <div className="rounded-md border border-dashed bg-background/60 px-3 py-2 text-xs">
-            <div className="font-medium text-foreground">Targeting checklist — saved in this browser</div>
-            <div className="mt-2 space-y-2">
-              <label className="flex cursor-pointer gap-2 items-start">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 rounded border-input"
-                  checked={Boolean(pledges.pledgesEmployersCurated)}
-                  onChange={(e) => setPledgeField("pledgesEmployersCurated", e.target.checked)}
-                />
-                <span>
-                  Boards I add are deliberate; when empty I&apos;m relying on defaults with strong
-                  titles/locations—not a vague “anything goes” scrape.
-                </span>
-              </label>
-              <label className="flex cursor-pointer gap-2 items-start">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 rounded border-input"
-                  checked={Boolean(pledges.pledgesFiltersNonSpam)}
-                  onChange={(e) => setPledgeField("pledgesFiltersNonSpam", e.target.checked)}
-                />
-                <span>
-                  Titles and locations sharpen this list—they are not a blank check to blanket-apply or
-                  spray low-context applications.
-                </span>
-              </label>
-            </div>
+            <label className="flex cursor-pointer gap-2 items-start">
+              <input
+                type="checkbox"
+                className="mt-0.5 rounded border-input"
+                checked={Boolean(pledges.pledgesFiltersNonSpam)}
+                onChange={(e) => setPledgeField("pledgesFiltersNonSpam", e.target.checked)}
+              />
+              <span>
+                I&apos;ll treat these filters seriously—narrow targeting, not a blank check for mass applying.
+              </span>
+            </label>
           </div>
         </div>
 
@@ -1082,9 +794,8 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
           </div>
           <p className="text-sm text-muted-foreground">
             Optional hints layered on titles. Matching uses the ATS &quot;location&quot; field (substring,
-            case-insensitive). If you skip employer boards below, we substitute about{" "}
-            {DEFAULT_PORTAL_CATALOG_SIZE} default ATS postings sites—then at least one title include or location
-            line is required so the scan does not run wide open.
+            case-insensitive). You need at least one title line or one location include so we don&apos;t run
+            without a target.
           </p>
           <Select
             value={locationPreset}
@@ -1139,8 +850,8 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
             <Label className="text-base font-medium">Roles — exclude from titles</Label>
           </div>
           <p className="text-sm text-muted-foreground">
-            Drop postings whose titles hit any fragment here. Applied to every scan source (employer boards
-            in Step&nbsp;4 or the default ATS list when boards are blank).
+            Drop postings whose titles hit any fragment here. Applied after your include filters across the
+            built-in ATS board list.
           </p>
           <div className="flex flex-wrap gap-x-4 gap-y-2">
             {NEGATIVE_PRESETS.map((p) => (
@@ -1173,190 +884,12 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
           </div>
         </div>
 
-        <section className="rounded-lg border border-border bg-muted/10 p-4 sm:p-5 space-y-3">
-          <div className="flex flex-wrap items-center gap-2 gap-y-1">
-            <Badge variant="secondary">Step 4</Badge>
-            <Label className="text-base font-medium">Employers — job boards</Label>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Optional. Paste only careers URLs you intentionally watch. Leave this empty and we substitute
-            about {DEFAULT_PORTAL_CATALOG_SIZE} default ATS postings sites (then Steps&nbsp;1–2 must include at
-            least one title or location keyword so scans stay narrowly scoped).
-          </p>
-          <Select
-            value={boardEntryMode}
-            onValueChange={(v) => {
-              const next = v as BoardEntryMode;
-              if (next === "bulk") {
-                const joined = rows
-                  .map((r) => buildCareersUrl(r))
-                  .filter(Boolean)
-                  .join("\n");
-                setBulkPaste((prev) => (prev.trim() ? prev : joined));
-              } else {
-                const fromBulk = bulkPasteToRows(bulkPaste).map((br) =>
-                  inferRowFromCompany({
-                    careers_url: buildCareersUrl(br),
-                    name: guessCompanyLabelFromUrl(buildCareersUrl(br)),
-                    enabled: br.enabled,
-                  }),
-                );
-                if (rows.length === 0 && fromBulk.length) setRows(fromBulk);
-              }
-              setBoardEntryMode(next);
-            }}
-          >
-            <SelectTrigger className="w-full max-w-lg">
-              <SelectValue placeholder="Pick how you enter boards" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="tables">Add boards one-by-one</SelectItem>
-              <SelectItem value="bulk">Paste many board URLs</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {boardEntryMode === "bulk" ? (
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                One careers URL per line (Ashby, Greenhouse job-board hosts, Lever, or{" "}
-                <code className="text-xs">tenant.wd5.myworkdayjobs.com/your-careers-site-id</code>
-                ). Lines starting with <code className="text-xs">#</code> are comments. Bare slugs
-                alone are skipped — paste full URLs only.
-              </p>
-              {bulkPasteHasUnsupportedLines(bulkPaste) ? (
-                <p className="text-xs text-destructive">
-                  Some lines cannot be mapped to supported ATS URLs — fix links or switch to one-by-one
-                  entry.
-                </p>
-              ) : null}
-              <Textarea
-                value={bulkPaste}
-                onChange={(e) => setBulkPaste(e.target.value)}
-                spellCheck={false}
-                className="min-h-[240px] font-mono text-xs leading-relaxed"
-                placeholder={`# Examples\nhttps://jobs.ashbyhq.com/example\nhttps://job-boards.greenhouse.io/example\nhttps://jobs.lever.co/example\nhttps://acme.wd1.myworkdayjobs.com/acme-careers`}
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() =>
-                  setBulkPaste(rows.map((r) => buildCareersUrl(r)).filter(Boolean).join("\n"))
-                }
-              >
-                Copy current boards from rows into textarea
-              </Button>
-            </div>
-          ) : (
-            <>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm text-muted-foreground">
-                  ATS plus slug or full careers URL per row — display label is optional and auto-filled when
-                  you paste a URL.
-                </p>
-                <Button type="button" variant="outline" size="sm" onClick={addRow}>
-                  <Plus className="size-4" />
-                  Add row
-                </Button>
-              </div>
-              {rows.length === 0 ? (
-                <p className="text-sm text-muted-foreground border rounded-md px-4 py-6 text-center leading-relaxed">
-                  No boards here — scans use the built-in ATS list (~{DEFAULT_PORTAL_CATALOG_SIZE} sites) plus
-                  your title and location rules. Add rows or switch to paste-many-URLs mode to override that
-                  with specific employers only.
-                </p>
-              ) : (
-                <div className="flex flex-col gap-4">
-                  {rows.map((row, idx) => (
-                    <div
-                      key={row.id}
-                      className="rounded-lg border bg-muted/30 p-4 flex flex-col gap-3 sm:grid sm:grid-cols-12 sm:gap-3 sm:items-end"
-                    >
-                      <div className="sm:col-span-3 space-y-1.5">
-                        <Label className="text-xs text-muted-foreground">
-                          Display label (optional)
-                        </Label>
-                        <Input
-                          value={row.name}
-                          onChange={(e) => updateRow(row.id, { name: e.target.value })}
-                          placeholder={`Company ${idx + 1}`}
-                        />
-                      </div>
-                      <div className="sm:col-span-3 space-y-1.5">
-                        <Label className="text-xs text-muted-foreground">ATS</Label>
-                        <Select
-                          value={row.platform}
-                          onValueChange={(v) =>
-                            updateRow(row.id, { platform: v as AtsPlatform })
-                          }
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="ashby">Ashby</SelectItem>
-                            <SelectItem value="greenhouse">Greenhouse</SelectItem>
-                            <SelectItem value="lever">Lever</SelectItem>
-                            <SelectItem value="workday">Workday</SelectItem>
-                            <SelectItem value="custom">Other URL</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="sm:col-span-5 space-y-1.5">
-                        <Label className="text-xs text-muted-foreground">
-                          {row.platform === "custom" || row.platform === "workday"
-                            ? "Careers URL"
-                            : "Slug from jobs URL"}
-                        </Label>
-                        <Input
-                          value={row.slugOrUrl}
-                          onChange={(e) =>
-                            updateRow(row.id, { slugOrUrl: e.target.value })
-                          }
-                          placeholder={
-                            row.platform === "custom" || row.platform === "workday"
-                              ? "https://tenant.wd3.myworkdayjobs.com/site-id…"
-                              : "acme"
-                          }
-                        />
-                      </div>
-                      <div className="sm:col-span-1 flex gap-2 justify-end pb-1">
-                        <label className="flex items-center gap-1.5 text-xs whitespace-nowrap cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={row.enabled}
-                            onChange={(e) =>
-                              updateRow(row.id, { enabled: e.target.checked })
-                            }
-                            className="rounded border-input"
-                          />
-                          On
-                        </label>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive shrink-0"
-                          onClick={() => removeRow(row.id)}
-                          aria-label="Remove board"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </section>
-
         <details className="rounded-lg border bg-muted/10 text-sm">
           <summary className="cursor-pointer px-4 py-3 font-medium">
             Advanced: generated JSON (read-only)
           </summary>
           <pre className="px-4 pb-4 text-xs overflow-auto max-h-56 whitespace-pre-wrap font-mono text-muted-foreground border-t">
-            {previewJson || "(add titles, locations, and optional boards to preview)"}
+            {previewJson || "(add title and location lines to preview — `tracked_companies` stays empty)"}
           </pre>
         </details>
       </div>

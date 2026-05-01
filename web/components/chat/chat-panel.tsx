@@ -12,6 +12,7 @@ import { JobActions } from "@/components/chat/job-actions";
 import { RecentSearches } from "@/components/chat/recent-searches";
 import { SseStream } from "@/components/sse-stream";
 import { extractJobsBlock } from "@/lib/jobs-block";
+import { HOSTED_SCAN_MATCH_LIMIT } from "@/lib/portal-scan";
 import { cn } from "@/lib/utils";
 import type {
   LinkedInResult,
@@ -122,16 +123,16 @@ function buildPortalSearchReply(data: PortalSearchResponse): {
     "",
     kw
       ? `**Keyword narrow:** _${kw.replace(/_/g, "\\_")}_ — each token (3+ characters) must appear **as a whole word in the job title** (role); this step ignores company names but still runs after profile title/location filters.`
-      : `_No keyword narrow — showing up to **${data.query.limit}** roles that pass your profile filters._`,
+      : `_No keyword narrow — showing up to **${Math.min(data.query.limit, HOSTED_SCAN_MATCH_LIMIT)}** newest-matching roles (profile filters first). Cap is ${HOSTED_SCAN_MATCH_LIMIT} per search._`,
     "",
-    `**Stats:** ${data.companies_scanned} boards · **${data.stats.title_filtered_total}** roles after profile filters · **${data.stats.keyword_matched_total}** after keywords · **${data.stats.returned}** shown below.`,
+    `**Stats:** ${data.companies_scanned} boards queried · **${data.stats.title_filtered_total}** matches after profile filters (ranked newest-first when ATS dates exist) · **${data.stats.keyword_matched_total}** after keywords · **${data.stats.returned}** returned.`,
   ];
   const jobs = data.results;
   if (jobs.length === 0) {
     return {
       content:
         lines.join("\n") +
-        "\n\n_No matches. Try different keywords, or widen title/location filters under **Profile → ATS job boards**._",
+        "\n\n_No matches. Try different keywords, or widen title/location rules under **Profile → Scan targeting**._",
       jobs: [],
     };
   }

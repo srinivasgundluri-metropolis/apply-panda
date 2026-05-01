@@ -4,11 +4,11 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { PortalsTrackedCompany, PortalsYamlConfig } from "@/lib/types";
+import type { PortalsYamlConfig } from "@/lib/types";
 import { defaultCatalogCopy } from "@/lib/default-portal-catalog";
 
 const USER_PORTALS_REQUIRED_MSG =
-  "Portal scanner is not configured. Open Profile → ATS boards: add title or location keywords, or paste employer boards (same JSON shape as career-ops portals.yml).";
+  "Portal scanner is not configured. Open Profile → ATS job targeting: add at least one title phrase or location line.";
 
 /** Thrown when `profiles.data.portals` is missing, null, or invalid for scan/search. */
 export class UserPortalsConfigMissingError extends Error {
@@ -24,7 +24,12 @@ export type PortalJob = {
   company: string;
   location: string;
   source: string;
+  /** Best-effort “last updated” or publish time from the ATS (unix ms). Used for sorting. */
+  postedAt?: number;
 };
+
+/** Hosted scans return at most this many roles, newest ATS timestamps first when available. */
+export const HOSTED_SCAN_MATCH_LIMIT = 100;
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -71,6 +76,56 @@ export function parseWorkdayCareersUrl(raw: string): ParsedWorkdayBoard | null {
   return { calypsoOrigin, tenant, siteId };
 }
 
+/** Parses common ATS timestamp fields into unix ms when possible (best-effort). */
+function postedAtMsFromRecord(j: Record<string, unknown>): number | undefined {
+  const bestFromIsoKey = (): number | undefined => {
+    let best: number | undefined;
+    for (const k of ["updated_at", "created_at", "publishedAt", "published_at", "openedAt", "postedOn", "startDate"]) {
+      const v = j[k];
+      if (typeof v !== "string" || !v.trim()) continue;
+      const t = Date.parse(v);
+      if (Number.isFinite(t) && (best === undefined || t > best)) best = t;
+    }
+    return best;
+  };
+
+  let best = bestFromIsoKey();
+
+  for (const k of ["postedOn", "startDate"]) {
+    const v = j[k];
+    if (typeof v === "number" && Number.isFinite(v)) {
+      const ms = v < 2e11 ? Math.round(v * 1000) : Math.round(v);
+      if (best === undefined || ms > best) best = ms;
+    }
+    if (typeof v === "string" && /^\d{10,}$/.test(v.trim())) {
+      const n = Number(v);
+      const ms = n < 2e11 ? n * 1000 : n;
+      if (Number.isFinite(ms) && (best === undefined || ms > best)) best = ms;
+    }
+  }
+
+  const ua = j.updatedAt;
+  if (typeof ua === "number" && Number.isFinite(ua)) {
+    const ms = ua < 2e11 ? Math.round(ua * 1000) : Math.round(ua);
+    if (best === undefined || ms > best) best = ms;
+  } else if (typeof ua === "string" && /^\d+$/.test(ua)) {
+    const n = Number(ua);
+    const ms = n < 2e11 ? n * 1000 : n;
+    if (Number.isFinite(ms) && (best === undefined || ms > best)) best = ms;
+  }
+
+  const bul = j.bulletin;
+  if (bul && typeof bul === "object" && bul !== null) {
+    const plu = (bul as Record<string, unknown>).postingLastUpdated;
+    if (typeof plu === "string") {
+      const t = Date.parse(plu);
+      if (Number.isFinite(t) && (best === undefined || t > best)) best = t;
+    }
+  }
+
+  return best;
+}
+
 async function fetchJson(url: string): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -83,12 +138,24 @@ async function fetchJson(url: string): Promise<unknown> {
   }
 }
 
+type WorkdayJobsPagePayload = {
+  total?: number;
+  jobPostings?: Array<{
+    title?: string;
+    externalPath?: string;
+    locationsText?: string;
+    postedOn?: unknown;
+    startDate?: unknown;
+    bulletin?: { postingLastUpdated?: unknown };
+  }>;
+};
+
 async function postWorkdayJobsPage(
   calypsoOrigin: string,
   tenant: string,
   siteId: string,
   offset: number,
-): Promise<{ total?: number; jobPostings?: Array<{ title?: string; externalPath?: string; locationsText?: string }> }> {
+): Promise<WorkdayJobsPagePayload> {
   const endpoint = `${calypsoOrigin.replace(/\/$/, "")}/wday/cxs/${encodeURIComponent(tenant)}/${encodeURIComponent(siteId)}/jobs`;
   const body = {
     appliedFacets: {},
@@ -110,17 +177,14 @@ async function postWorkdayJobsPage(
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return (await res.json()) as {
-      total?: number;
-      jobPostings?: Array<{ title?: string; externalPath?: string; locationsText?: string }>;
-    };
+    return (await res.json()) as WorkdayJobsPagePayload;
   } finally {
     clearTimeout(timer);
   }
 }
 
 function parseWorkdayPostingsToJobs(
-  postings: NonNullable<Awaited<ReturnType<typeof postWorkdayJobsPage>>["jobPostings"]>,
+  postings: NonNullable<WorkdayJobsPagePayload["jobPostings"]>,
   companyName: string,
   calypsoOrigin: string,
   siteId: string,
@@ -130,12 +194,14 @@ function parseWorkdayPostingsToJobs(
     const rawPath = String(j.externalPath ?? "");
     const path = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
     const url = `${base}/${siteId}${path}`;
+    const rec = j as Record<string, unknown>;
     return {
       title: j.title ?? "",
       url,
       company: companyName,
       location: j.locationsText ?? "",
       source: "workday-cxs",
+      postedAt: postedAtMsFromRecord(rec),
     };
   });
 }
@@ -200,36 +266,47 @@ export function detectPortalApi(company: { api?: string; careers_url?: string })
 
 function parseGreenhouse(json: unknown, companyName: string): PortalJob[] {
   const jobs =
-    (json as { jobs?: Array<{ title?: string; absolute_url?: string; location?: { name?: string } }> })
-      .jobs ?? [];
-  return jobs.map((j) => ({
-    title: j.title ?? "",
-    url: j.absolute_url ?? "",
-    company: companyName,
-    location: j.location?.name ?? "",
-    source: "greenhouse-api",
-  }));
+    (json as {
+      jobs?: Array<
+        Record<string, unknown> & { title?: string; absolute_url?: string; location?: { name?: string } }
+      >;
+    }).jobs ?? [];
+  return jobs.map((job) => {
+    const rec = job as Record<string, unknown>;
+    return {
+      title: String(rec.title ?? ""),
+      url: String(rec.absolute_url ?? ""),
+      company: companyName,
+      location: String(job.location?.name ?? ""),
+      source: "greenhouse-api",
+      postedAt: postedAtMsFromRecord(rec),
+    };
+  });
 }
 
 function parseAshby(json: unknown, companyName: string): PortalJob[] {
-  const jobs = (json as { jobs?: Array<{ title?: string; jobUrl?: string; location?: string }> }).jobs ?? [];
+  const jobs =
+    (json as { jobs?: Array<Record<string, unknown> & { title?: string; jobUrl?: string; location?: string }> })
+      .jobs ?? [];
   return jobs.map((j) => ({
-    title: j.title ?? "",
-    url: j.jobUrl ?? "",
+    title: String(j.title ?? ""),
+    url: String(j.jobUrl ?? ""),
     company: companyName,
-    location: j.location ?? "",
+    location: String(j.location ?? ""),
     source: "ashby-api",
+    postedAt: postedAtMsFromRecord(j as Record<string, unknown>),
   }));
 }
 
 function parseLever(json: unknown, companyName: string): PortalJob[] {
-  const jobs = Array.isArray(json) ? json : [];
+  const jobs = Array.isArray(json) ? (json as Record<string, unknown>[]) : [];
   return jobs.map((j) => ({
-    title: String((j as { text?: string }).text ?? ""),
-    url: String((j as { hostedUrl?: string }).hostedUrl ?? ""),
+    title: String(j.text ?? ""),
+    url: String(j.hostedUrl ?? ""),
     company: companyName,
-    location: String((j as { categories?: { location?: string } }).categories?.location ?? ""),
+    location: String((j.categories as { location?: string } | undefined)?.location ?? ""),
     source: "lever-api",
+    postedAt: postedAtMsFromRecord(j),
   }));
 }
 
@@ -258,44 +335,24 @@ export function buildLocationFilter(
   return buildSubstringTextFilter(locationFilter);
 }
 
-/** User-supplied employers with a fetchable ATS URL still enabled. */
-function userListedBoards(tc: PortalsTrackedCompany[] | undefined): PortalsTrackedCompany[] {
-  if (!tc?.length) return [];
-  return tc.filter(
-    (c) =>
-      c.enabled !== false &&
-      typeof c.careers_url === "string" &&
-      c.careers_url.trim().length > 0 &&
-      detectPortalApi(c as { careers_url?: string; api?: string }),
-  );
-}
-
 function positiveLineCount(lines: string[] | undefined): number {
   return (lines ?? []).filter((x) => String(x).trim().length > 0).length;
 }
 
-/** True when no user boards are configured (scan will merge the curated default catalog). */
-export function portalScanUsesDefaultCatalog(cfg: PortalsYamlConfig): boolean {
-  return userListedBoards(cfg.tracked_companies).length === 0;
-}
-
-/** Merges curated default boards only when `tracked_companies` is empty or has no callable URLs. */
+/**
+ * Hosted scans always pull from ApplyPanda’s built-in ATS board directory ({@link defaultCatalogCopy}).
+ * Per-user employer rows in `profiles.data.portals` are ignored so targeting stays titles + locations only.
+ */
 export function mergeUserPortalsWithDefaultCatalog(cfg: PortalsYamlConfig): PortalsYamlConfig {
-  const user = userListedBoards(cfg.tracked_companies);
-  if (user.length > 0) return cfg;
   return { ...cfg, tracked_companies: defaultCatalogCopy() };
 }
 
-/**
- * When scanning the default employer directory, require title or location narrowing to avoid blind firehose scans.
- */
-export function assertNarrowingWhenUsingDefaultCatalog(cfg: PortalsYamlConfig) {
-  if (!portalScanUsesDefaultCatalog(cfg)) return;
+export function assertHostedScanHasTitleOrLocation(cfg: PortalsYamlConfig) {
   const tp = positiveLineCount(cfg.title_filter?.positive);
   const lp = positiveLineCount(cfg.location_filter?.positive);
   if (tp === 0 && lp === 0) {
     throw new UserPortalsConfigMissingError(
-      "With no employers listed, add at least one title include phrase or one location hint so the default boards scan stays targeted. Alternatively add specific board URLs.",
+      "Add at least one title phrase or one location line so we can return the newest matching roles.",
     );
   }
 }
@@ -304,14 +361,13 @@ function isValidUserPortals(p: unknown): p is PortalsYamlConfig {
   if (!p || typeof p !== "object" || Array.isArray(p)) return false;
   const cfg = p as PortalsYamlConfig;
   if (cfg.tracked_companies !== undefined && !Array.isArray(cfg.tracked_companies)) return false;
-  if (userListedBoards(cfg.tracked_companies).length > 0) return true;
   const tp = positiveLineCount(cfg.title_filter?.positive);
   const lp = positiveLineCount(cfg.location_filter?.positive);
   return tp > 0 || lp > 0;
 }
 
 /**
- * Loads `profiles.data.portals` for the signed-in user (custom boards optional; empty boards need title OR location narrowing).
+ * Loads `profiles.data.portals` — title and/or location lines required; tracked boards field is unused for fetch.
  */
 export async function loadPortalsConfigResolved(
   supabase: SupabaseClient,
@@ -331,10 +387,22 @@ export async function loadPortalsConfigResolved(
   }
   if (!isValidUserPortals(portals)) {
     throw new UserPortalsConfigMissingError(
-      "profiles.data.portals must list employers with board URLs or include title/location filter lines. Fix this under Profile → ATS job boards.",
+      "profiles.data.portals must include at least one title phrase or location line. Fix this under Profile → ATS job targeting.",
     );
   }
   return portals;
+}
+
+/** Newest ATS timestamps first; roles without timestamps sort after dated ones (tie-break: URL desc). */
+export function sortHostedScanJobsByRecency(jobs: PortalJob[]): PortalJob[] {
+  return [...jobs].sort((a, b) => {
+    const ta =
+      typeof a.postedAt === "number" && Number.isFinite(a.postedAt) ? a.postedAt : 0;
+    const tb =
+      typeof b.postedAt === "number" && Number.isFinite(b.postedAt) ? b.postedAt : 0;
+    if (tb !== ta) return tb - ta;
+    return String(b.url).localeCompare(String(a.url));
+  });
 }
 
 function dedupeByUrl(jobs: PortalJob[]): PortalJob[] {
@@ -384,7 +452,7 @@ export async function collectAllTitleFilteredPortalJobs(
   cfg: PortalsYamlConfig,
   options: CollectPortalJobsOpts = {},
 ): Promise<{ config: PortalsYamlConfig; companiesScanned: number; jobs: PortalJob[] }> {
-  assertNarrowingWhenUsingDefaultCatalog(cfg);
+  assertHostedScanHasTitleOrLocation(cfg);
   const scanCfg = mergeUserPortalsWithDefaultCatalog(cfg);
   const titleFilter = buildTitleFilter(scanCfg.title_filter);
   const locationFilter = buildLocationFilter(scanCfg.location_filter);
@@ -432,7 +500,11 @@ export async function collectAllTitleFilteredPortalJobs(
     for (const arr of chunkResults) collected.push(...arr);
   }
 
-  return { config: scanCfg, companiesScanned: targets.length, jobs: dedupeByUrl(collected) };
+  return {
+    config: scanCfg,
+    companiesScanned: targets.length,
+    jobs: sortHostedScanJobsByRecency(dedupeByUrl(collected)),
+  };
 }
 
 /** Title filters from yaml, optional chat keywords, capped list for UI. */
@@ -447,14 +519,14 @@ export async function searchPortalJobsWithFilters(
   titleFilteredTotal: number;
   keywordMatchedTotal: number;
 }> {
-  const cap = Math.min(200, Math.max(1, limit));
-  const { config, companiesScanned, jobs: all } = await collectAllTitleFilteredPortalJobs(cfg);
-  const narrowed = keywords.trim() ? applyKeywordNarrowing(all, keywords) : all;
+  const capReq = Math.min(HOSTED_SCAN_MATCH_LIMIT, Math.max(1, limit));
+  const { config, companiesScanned, jobs: allSorted } = await collectAllTitleFilteredPortalJobs(cfg);
+  const narrowed = keywords.trim() ? applyKeywordNarrowing(allSorted, keywords) : allSorted;
   return {
     config,
     companiesScanned,
-    jobs: narrowed.slice(0, cap),
-    titleFilteredTotal: all.length,
+    jobs: narrowed.slice(0, capReq),
+    titleFilteredTotal: allSorted.length,
     keywordMatchedTotal: narrowed.length,
   };
 }

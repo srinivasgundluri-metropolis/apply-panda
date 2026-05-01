@@ -1,10 +1,10 @@
 import type { PortalsTrackedCompany } from "@/lib/types";
 
 /**
- * Curated ATS-only career URLs ApplyPanda can hit without scraping (same detector as custom boards).
- * Used when `tracked_companies` is empty — title and location filters then narrow hits.
+ * Curated ATS career URLs ApplyPanda hits without scraping.
+ * Hosted portal scans **always** use this directory — user profiles only supply title + location targeting.
  *
- * Maintain API-mappable URLs only (GH / Ashby / Lever / Workday patterns); avoid branded vanity pages.
+ * Maintain API-mappable URLs only (Greenhouse / Ashby / Lever / Workday patterns); avoid branded vanity pages.
  */
 export const DEFAULT_PORTAL_CATALOG: readonly PortalsTrackedCompany[] = [
   { name: "Anthropic", enabled: true, careers_url: "https://job-boards.greenhouse.io/anthropic" },

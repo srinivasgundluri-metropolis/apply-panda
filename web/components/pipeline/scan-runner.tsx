@@ -20,15 +20,14 @@ export function ScanRunner() {
       <div className="rounded-lg border bg-muted/30 px-4 py-3 flex gap-3 text-sm text-muted-foreground">
         <Info className="size-4 shrink-0 text-foreground/70 mt-0.5" aria-hidden />
         <p className="min-w-0 leading-relaxed">
-          Boards must be saved under{" "}
+          Set titles and locations under{" "}
           <Link
-            href="/profile?tab=boards"
+            href="/profile?tab=portals"
             className="text-foreground font-medium underline underline-offset-2 hover:text-primary"
           >
-            Profile → ATS job boards
+            Profile → Scan targeting
           </Link>
-          . If a run fails with a configuration message, open that section, paste valid JSON, and save
-          before trying again.
+          first. Each run scans the curated ATS directory, keeps matches that fit your filters, ranks them by recency when the ATS publishes dates, and saves up to 100 newest URLs to Scan results (skipping ones you already stored).
         </p>
       </div>
       <Card className="px-6 py-5 gap-3">
@@ -36,13 +35,13 @@ export function ScanRunner() {
           <div className="min-w-0 max-w-xl">
             <p className="font-medium text-base">Scan job boards</p>
             <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-              Queries Greenhouse, Ashby, Lever, and Workday for every company in your saved board list, applies
-              your title include/exclude rules, then writes new postings to{" "}
-              <strong>Scan results</strong> with status{" "}
+              Queries the built-in ATS board list with your saved title &amp; location rules, ranks matches by newest
+              timestamps where available, then writes up to 100 postings to{" "}
+              <strong>Scan results</strong>{" "}
               <Badge variant="outline" className="text-[10px] mx-0.5 align-middle">
                 added
               </Badge>
-              . Existing URLs are skipped.
+              . URLs already on file are skipped.
             </p>
           </div>
           <Button

@@ -178,9 +178,7 @@ export function ProfileResumeEditor({
       };
 
       if (atsBoardsRef.current?.hasIncompleteCompanyRows()) {
-        toast.error(
-          "ATS boards: each row needs a supported careers slug or URL. Display labels are optional—fill the board URL or remove broken rows.",
-        );
+        toast.error("Scan targeting invalid—fix highlighted fields.");
         setSaving(false);
         return;
       }
@@ -217,7 +215,7 @@ export function ProfileResumeEditor({
         throw new Error((j as { error?: string }).error ?? `CV HTTP ${resCv.status}`);
       }
 
-      toast.success("Profile, ATS boards, and résumé updated.");
+      toast.success("Profile, scan targeting, and résumé updated.");
       router.refresh();
     } catch (err) {
       toast.error(`Save failed: ${(err as Error).message}`);
@@ -232,7 +230,7 @@ export function ProfileResumeEditor({
         <TabsList className="w-fit flex-wrap">
           <TabsTrigger value="resume">Résumé (`cv.md`)</TabsTrigger>
           <TabsTrigger value="yaml">Targeting (`profile.yml`)</TabsTrigger>
-          <TabsTrigger value="portals">ATS job boards</TabsTrigger>
+          <TabsTrigger value="portals">Scan targeting</TabsTrigger>
         </TabsList>
 
         <TabsContent value="resume" className="mt-2">
@@ -393,21 +391,16 @@ export function ProfileResumeEditor({
         <TabsContent value="portals" className="mt-2">
           <Card id="profile-ats-boards" className="scroll-mt-24">
             <CardHeader>
-              <CardTitle>ATS job boards</CardTitle>
+              <CardTitle>Scan targeting</CardTitle>
               <CardDescription className="space-y-2 text-sm leading-relaxed">
                 <p>
-                  Scanning is driven by <strong>title and location keywords</strong>. Optional ATS board URLs
-                  focus which employers&apos; postings we poll; leave boards empty for a curated default ATS
-                  list (still narrowed by titles/locations). Supports Greenhouse, Ashby, Lever, and Workday (
-                  <code className="text-muted-foreground">myworkdayjobs.com</code>
-                  ). Saved privately and powers{" "}
-                  <strong>Chat → search job boards</strong> and <strong>Pipeline → Scan job boards</strong>.
+                  Set <strong>job titles</strong> and <strong>locations</strong> to match—we scan about four
+                  dozen curated Greenhouse/Ashby/Lever boards automatically and save the newest 100 postings
+                  that fit (substring rules on ATS title &amp; location text). Stored privately with your profile
+                  and powers <strong>Chat → search job boards</strong> and{" "}
+                  <strong>Pipeline → Scan job boards</strong>.
                 </p>
-                <p>
-                  Use the form below — no JSON required (<code className="text-xs">title_filter</code>,{" "}
-                  <code className="text-xs">location_filter</code>, tracked boards). To clear boards, delete
-                  every row and save; titles/locations alone can still persist.
-                </p>
+                <p>No employer URLs to paste; optional title excludes trim noise.</p>
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -421,7 +414,7 @@ export function ProfileResumeEditor({
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground max-w-lg">
-          Saves targeting, résumé markdown, and your ATS board list so scans, search, and tailored
+          Saves targeting, résumé markdown, and scan title/location filters so ATS scans, search, and tailored
           documents stay in sync.
         </p>
         <Button type="submit" disabled={saving} size="lg">

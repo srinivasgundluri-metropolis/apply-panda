@@ -38,7 +38,7 @@ export default async function ProfilePage({
     <>
       <PageHeader
         title="Profile & résumé"
-        description="Edit targeting, your résumé, and ATS job boards. Keeping these current keeps scans, chat search, and tailored CVs aligned with you."
+        description="Edit targeting, résumé, and title/location rules for ATS scans (built-in boards). Keeps scans, chat search, and tailored CVs aligned."
       />
       <div className="px-8 py-6 max-w-4xl">
         <ProfileResumeEditor

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiUser } from "@/lib/supabase/api";
 import {
+  HOSTED_SCAN_MATCH_LIMIT,
   loadPortalsConfigResolved,
   searchPortalJobsWithFilters,
   UserPortalsConfigMissingError,
@@ -14,13 +15,25 @@ interface SearchBody {
   limit?: number;
 }
 
-function toResults(jobs: Array<{ url: string; title: string; company: string; location: string; source: string }>): LinkedInResult[] {
+function toResults(
+  jobs: Array<{
+    url: string;
+    title: string;
+    company: string;
+    location: string;
+    source: string;
+    postedAt?: number;
+  }>,
+): LinkedInResult[] {
   return jobs.map((j) => ({
     url: j.url,
     title: j.title,
     company: j.company,
     location: j.location ?? "",
-    posted: "",
+    posted:
+      typeof j.postedAt === "number" && Number.isFinite(j.postedAt)
+        ? new Date(j.postedAt).toISOString()
+        : "",
     source: j.source,
   }));
 }
@@ -41,7 +54,10 @@ export async function POST(req: NextRequest) {
   }
 
   const keywords = String(body.keywords ?? "").trim();
-  const limit = Math.min(200, Math.max(1, Number(body.limit) || 60));
+  const limit = Math.min(
+    HOSTED_SCAN_MATCH_LIMIT,
+    Math.max(1, Number(body.limit) || HOSTED_SCAN_MATCH_LIMIT),
+  );
 
   try {
     const cfg = await loadPortalsConfigResolved(auth.supabase, auth.user.id);

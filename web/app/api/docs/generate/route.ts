@@ -208,7 +208,7 @@ export async function POST(req: NextRequest) {
     const tryDocx = async (): Promise<string | null> => {
       if (skipDocxEnv) return null;
       try {
-        const buf = await hostedHtmlToDocxBuffer(html);
+        const buf = await hostedHtmlToDocxBuffer(html, { variant: kind });
         await uploadUserTailoredDocx({
           supabase: auth.supabase,
           userId: uid,

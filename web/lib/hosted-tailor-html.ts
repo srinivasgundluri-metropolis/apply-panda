@@ -19,9 +19,18 @@ export interface HostedTailorContext {
 
 const HTML_RULES = `HTML requirements (both documents):
 - Standalone file: <!DOCTYPE html>, <html lang="en">, embedded <style> only (no external CSS/JS/fonts).
-- Letter paper, readable 10–11pt sans-serif, margins ~0.75in, print-friendly black-on-white.
-- No scripts, no remote images, no emoji.
-- Use semantic markup; keep content honest — only facts from SOURCE_CV and REPORT.`;
+- Letter paper, print-friendly black-on-white (no emoji, no remote assets).
+- No scripts; no decorative graphics or charts.
+- Use semantic markup; keep content honest — only facts from SOURCE_CV and REPORT.
+
+Cover letters: professional business letter proportions (still one column).
+
+Résumés (ATS + Full variants only — follow Stanford Career Education chronological style):
+- **Layout conventions** (mirror Stanford sample résumés): margins not below ~1 inch; body text **≥10 pt** (target **11 pt** serif on screen/PDF via CSS); left-aligned blocks; ample white space.
+- **Typography** in embedded CSS: serif stack such as Times New Roman, Times, or Charter for body copy; headings may stay bold serif or clean sans accents — keep ATS simplicity (no ornate fonts).
+- **Structure**: reverse chronological order. Typical section ordering (adapt titles to SOURCE_CV facts): concise **CONTACT LINE** under an **H1** with your legal name → **Education** (most recent first) → **Experience** / **Professional Experience** (most recent first, title | organization | Location; date range flush right on same conceptual line via flex or aligned spans, then indented bullet lines starting with strong action verbs) → optional splits like Research / Teaching / Volunteering → **Skills** / **Technical Skills** or **Projects** only if supported by SOURCE_CV.
+- **Bullets**: one line where possible; lead with verbs; quantify when SOURCE_CV supplies numbers — never invent metrics.
+`;
 
 export function buildHostedAtsHtmlPrompt(ctx: HostedTailorContext): string {
   return `You are tailoring a résumé for a job application (ATS-friendly variant).
@@ -48,7 +57,7 @@ ${trimContext(ctx.reportExcerpt, 12_000)}
 
 Output exactly ONE block in this form (nothing before or after the tags):
 <<<HOSTED_HTML>>>
-<!DOCTYPE html> ... complete ATS-style CV: tight single column, keyword-rich, short bullets ...
+<!DOCTYPE html> ... complete ATS-style CV: Stanford-style chronological single column, keyword-rich bullets, serif ~11pt CSS, generous margins (~1 in) ...
 <<<END_HOSTED_HTML>>>`;
 }
 
@@ -77,7 +86,7 @@ ${trimContext(ctx.reportExcerpt, 12_000)}
 
 Output exactly ONE block:
 <<<HOSTED_HTML>>>
-<!DOCTYPE html> ... richer layout, fuller bullets, still one column, same facts as ATS ...
+<!DOCTYPE html> ... Stanford-style chronological résumé: fuller bullets than ATS, serif typography, crisp section headers, reverse-chronological Experience + Education, same facts as ATS ...
 <<<END_HOSTED_HTML>>>`;
 }
 

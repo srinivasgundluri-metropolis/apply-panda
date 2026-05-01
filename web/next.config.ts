@@ -9,6 +9,15 @@ const nextConfig: NextConfig = {
   },
   // Headless Chromium (PDF) — avoid bundling issues on serverless bundles.
   serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium"],
+  // Next output tracing often skips binary assets; Sparticuz needs `bin/*.br`.
+  outputFileTracingIncludes: {
+    "/api/docs/generate": [
+      "./node_modules/@sparticuz/chromium/bin/**/*",
+    ],
+    "/api/docs/pdf-probe": [
+      "./node_modules/@sparticuz/chromium/bin/**/*",
+    ],
+  },
 };
 
 export default nextConfig;

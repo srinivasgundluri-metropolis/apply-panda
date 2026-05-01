@@ -174,6 +174,45 @@ async function launchLocalChromeBrowser(): Promise<Browser> {
   );
 }
 
+/** Sanitized launcher context for troubleshooting (never contains secrets). */
+export function getPdfLauncherDiagnostics(): Record<string, unknown> {
+  let localFound: string[] = [];
+  try {
+    localFound = orderedLocalChromePaths().filter((p) => existsSync(p));
+  } catch {
+    localFound = [];
+  }
+
+  const binDir = tryResolveSparticuzBinDir();
+  return {
+    platform: process.platform,
+    arch: process.arch,
+    cwd: process.cwd(),
+    bundledChromium: shouldUseBundledLambdaChromium(),
+    sparticuzBinDirPath: binDir,
+    sparticuzBinPresent: binDir !== null && existsSync(binDir),
+    PUPPETEER_EXECUTABLE_PATH: process.env.PUPPETEER_EXECUTABLE_PATH ?? null,
+    VERCEL: process.env.VERCEL ?? null,
+    VERCEL_ENV: process.env.VERCEL_ENV ?? null,
+    VERCEL_REGION: process.env.VERCEL_REGION ?? null,
+    APPLYPANDA_FORCE_LOCAL_CHROME: process.env.APPLYPANDA_FORCE_LOCAL_CHROME ?? null,
+    localChromeBinariesFound: localFound.slice(0, 15),
+  };
+}
+
+/** Lightweight launch → immediate close for `/api/docs/pdf-probe`. */
+export async function probePdfBrowserLaunch(): Promise<
+  { ok: true } | { ok: false; error: string }
+> {
+  try {
+    const browser = await launchPdfBrowser();
+    await browser.close();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 export async function launchPdfBrowser(): Promise<Browser> {
   if (shouldUseBundledLambdaChromium()) {
     const chromium = (await import("@sparticuz/chromium")).default;

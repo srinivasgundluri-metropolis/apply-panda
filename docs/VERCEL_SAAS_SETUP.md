@@ -38,6 +38,15 @@ Set these in Vercel Project Settings -> Environment Variables:
 
 **Tailored PDFs** (`/api/docs/generate`): on **deployed** Vercel (Linux, `VERCEL_ENV` `preview`|`production`) this uses `puppeteer-core` + `@sparticuz/chromium`. The resolver passes an explicit **`node_modules/@sparticuz/chromium/bin`** path (Next bundles break Sparticuz’s default `__dirname`). **`web/vercel.json`** requests **3008 MB** memory and **120s** for this route — Pro-level plans honor it; Hobby may clamp memory/timeouts. **`vercel dev`** is detected via `VERCEL_REGION=dev1` and/or missing preview/production env — install **Chrome**, **Edge**, or **Brave** locally, or set **`PUPPETEER_EXECUTABLE_PATH`**. If you copied hosted env vars into Linux dev and the wrong Chromium runs, use **`APPLYPANDA_FORCE_LOCAL_CHROME=1`**. If launch still fails in production on **ARM** serverless regions, Sparticuz’s current build is aimed at **x86** Lambda-style runtimes — pick an x86 region or an alternate PDF pipeline.
 
+**PDF troubleshooting (step-by-step):**
+
+1. While signed in to the dashboard, open **`/api/docs/pdf-probe`** on the same deployment (or run `pnpm dev`, sign in locally, hit `http://localhost:3000/api/docs/pdf-probe`).
+2. Copy the JSON. If **`diagnostics.sparticuzBinPresent`** is false on production, `@sparticuz/chromium/bin` wasn’t deployed — redeploy after `next.config.ts` **`outputFileTracingIncludes`** (already in repo) picks up **`bin/**/*.br`**.
+3. If **`bundledChromium`** is false but you meant to use hosted PDFs, confirm you’re hitting **deployed** Vercel (`VERCEL_ENV` should be **`preview`** or **`production`** in that JSON).
+4. **Local:** Install **Chrome**, **Edge**, or **Brave**, or set **`PUPPETEER_EXECUTABLE_PATH`** to the executable; macOS Spotlight path is often **`/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`**.
+5. **Hosted:** Prefer **Pro** tier so **`web/vercel.json`** memory (**3008 MB**) applies; Hobby may still OOM Chromium. Prefer **Washington / classic x86** regions over ARM-only setups for Sparticuz.
+6. **Workaround offline:** Generate CVs locally with **`node generate-pdf.mjs`** against your `cv.md` / HTML (career-ops CLI), then upload artifacts manually until serverless Chromium is sorted.
+
 ## 4) Smoke checklist
 
 - `/auth` loads and allows sign-up/sign-in.

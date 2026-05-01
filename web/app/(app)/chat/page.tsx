@@ -12,15 +12,10 @@ export default async function ChatPage() {
     <>
       <PageHeader
         title="AI Chat"
-        description="Conversational help for job hunts, tracker, and profile—with live LinkedIn + ATS rows injected when your message reads like a job search. Toggle instant tables if you want raw results without an LLM reply. Résumé coach can persist edits."
+        description="Conversational help for job hunts, tracker, and profile—with live LinkedIn + ATS rows injected on the server when your message reads like a job search. Résumé coach can persist edits."
       />
       <div className="px-8 py-6 flex-1 min-h-0 flex flex-col">
-        <ChatPanel
-          candidateFirst={first}
-          profileLocationHint={
-            profile.candidate?.location?.trim() || undefined
-          }
-        />
+        <ChatPanel candidateFirst={first} />
       </div>
     </>
   );

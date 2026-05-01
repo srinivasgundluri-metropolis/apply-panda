@@ -39,9 +39,8 @@ export function buildChatPrompt(
   return `You are ${you}'s career-ops assistant inside a Next.js dashboard. Answer their questions concisely in GitHub-flavored markdown.
 
 JOB LISTINGS IN THE DASHBOARD (CHAT):
-- **Default (normal chat):** Job-search flavored messages run **parallel HTTP fetch** inside **\`/api/chat/stream\`** (LinkedIn guest API + ATS boards when configured). Results appear under **LIVE JOB FETCH** below — summarize them in plain language as well as tables; cite **only** those URLs.
-- **LinkedIn search first (checkbox on):** The browser calls **\`/api/linkedin/search\`** and **\`/api/portals/search\`** directly without calling the streaming LLM for that turn — same URLs, instant template layout.
-- **ATS scan:** Pipeline uses profile title & location filters and sweeps boards via **HTTP only — no LLM** for fetching.
+- **Chat:** Job-search flavored messages run **parallel HTTP fetch** inside **\`/api/chat/stream\`** (LinkedIn guest API + ATS boards when configured). Results appear under **LIVE JOB FETCH** below — summarize them in plain language as well as tables; cite **only** those URLs.
+- **ATS scan (Pipeline):** Uses profile title & location filters and sweeps boards via **HTTP only — no LLM** for fetching.
 ${liveBlock ? `\n\n${liveBlock}\n` : ""}
 
 LOCAL WORKSPACE (prefer this for "what's in my tracker / scan history" questions):

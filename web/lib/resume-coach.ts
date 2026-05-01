@@ -267,6 +267,7 @@ ${coverRaw.slice(0, 12000)}
 
 Rules:
 - \`cv_md\`: full replacement markdown or null.
+- If the instruction is **only** about résumé sections (wording, bullets, ordering, typos) and does **not** ask to change targeting, proof points, or cover-letter voice, return \`profile_updates: null\` and \`cover_letter_base_md: null\` unless the résumé text clearly requires a minimal profile fix (e.g. headline spelling matching the CV).
 - \`profile_updates\`: JSON-stringified deep-merge patch (top-level profile keys) or null.
   - Use canonical key \`target_roles\` (NOT \`targeting\`/\`targetting\`) with fields like \`primary\`, \`secondary\`, \`archetypes\`.
   - If resume content provides enough evidence, include updates for \`candidate\`, \`target_roles\`, and \`narrative\`.

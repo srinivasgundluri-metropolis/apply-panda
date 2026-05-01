@@ -54,7 +54,17 @@ export async function POST(req: NextRequest) {
 
   const profile = await readProfile();
   const first = candidateFirstName(profile);
-  const prompt = buildChatPrompt(message, body.history ?? [], first);
+
+  const { data: resumeRow } = await auth.supabase
+    .from("resumes")
+    .select("content_md")
+    .eq("user_id", auth.user.id)
+    .maybeSingle();
+  const cvMarkdownExcerpt = String(resumeRow?.content_md ?? "").trim() || undefined;
+
+  const prompt = buildChatPrompt(message, body.history ?? [], first, {
+    cvMarkdownExcerpt,
+  });
   const primaryModel =
     body.model?.trim() ||
     process.env.OPENAI_MODEL?.trim() ||

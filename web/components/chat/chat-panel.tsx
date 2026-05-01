@@ -13,6 +13,7 @@ import { JobActions } from "@/components/chat/job-actions";
 import { RecentSearches } from "@/components/chat/recent-searches";
 import { SseStream } from "@/components/sse-stream";
 import { extractJobsBlock } from "@/lib/jobs-block";
+import { isExplicitCvMarkdownEditRequest } from "@/lib/cv-edit-intent";
 import { cn } from "@/lib/utils";
 import type { LinkedInResult, RecentSearch, SseEvent } from "@/lib/types";
 
@@ -35,10 +36,10 @@ const RECENT_KEY = "career-ops:recent-searches";
 const HISTORY_KEY = "career-ops:chat-history";
 
 const SUGGESTED_PROMPTS = [
+  "Update my cv.md Summary to three short lines emphasizing platform ML and one quantified win from my last role",
   "Given my profile, suggest a sharper LinkedIn About section (3 short paragraphs)",
   "Which roles in my tracker are still Evaluated vs Applied — what should I do next?",
   "How should I tighten my target_roles vs my last three evaluations?",
-  "Summarize what belongs in modes/_profile.md vs config/profile.yml for my goals",
   "What negotiation angles should I prep if I get to offer stage?",
 ];
 
@@ -326,9 +327,52 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     };
     const assistantId = makeId();
     setHistory((prev) => [...prev, userMsg]);
+    setInput("");
+
+    if (!resumeCoachMode && isExplicitCvMarkdownEditRequest(message)) {
+      setResumeCoachLoading(true);
+      setCoachProgressHint("Saving your edit to hosted cv.md (résumé coach pipeline)…");
+      try {
+        const res = await fetch("/api/resume-context/apply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ instruction: message }),
+        });
+        const data = (await res.json()) as {
+          ok?: boolean;
+          message?: string;
+          error?: string;
+        };
+        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+        setHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: data.message ?? "(no reply)",
+            id: assistantId,
+            resumeCoachReply: true,
+          },
+        ]);
+        toast.success("Résumé / profile coach applied your cv.md edit.");
+      } catch (e) {
+        toast.error(`Could not update cv.md: ${(e as Error).message}`);
+        setHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `_Update failed: ${(e as Error).message}_`,
+            id: assistantId,
+          },
+        ]);
+      } finally {
+        setResumeCoachLoading(false);
+        setCoachProgressHint("");
+      }
+      return;
+    }
+
     setStreaming(true);
     setStreamingContent("");
-    setInput("");
 
     try {
       const res = await fetch("/api/chat/stream", {
@@ -522,7 +566,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                 <p className="text-sm text-muted-foreground max-w-md mt-1">
                   {resumeCoachMode
                     ? "Describe changes, upload a résumé file (`.docx/.md/.txt`) for conversion, or both — the coach merges into your workspace using your configured model."
-                    : "Ask about your profile, résumé, evaluations, tracker, applications, and strategy — or paste job URLs for quick guidance. Use **Pipeline → Run scan** for live ATS boards; this chat does not run job search."}
+                    : "The assistant sees your **hosted résumé** in each reply. To **save** edits to cv.md, either turn on **Résumé / profile coach** or write clearly, e.g. **Update my cv.md …** (same save pipeline). Job discovery: **Pipeline → Run scan**."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 justify-center max-w-2xl mt-2">
@@ -599,10 +643,10 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               <span className="font-medium text-foreground">
                 Résumé / profile coach
               </span>{" "}
-              — update <code className="text-[10px]">cv.md</code>,{" "}
-              <code className="text-[10px]">profile.yml</code>,{" "}
-              <code className="text-[10px]">cover-letter-base.md</code>{" "}
-              (requires <code className="text-[10px]">OPENAI_API_KEY</code> in environment). Turn this on only when you want to apply edits to canonical resume/profile files.
+              — when on, Send applies your note to <code className="text-[10px]">cv.md</code>,{" "}
+              <code className="text-[10px]">profile.yml</code>, and{" "}
+              <code className="text-[10px]">cover-letter-base.md</code>. When off, imperative lines like **Update my cv.md …** still save via the same pipeline. Requires{" "}
+              <code className="text-[10px]">OPENAI_API_KEY</code>.
             </span>
           </label>
           {resumeCoachMode ? (
@@ -677,7 +721,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               placeholder={
                 resumeCoachMode
                   ? "e.g. Instructions to merge into your uploaded resume import, or type-only edits (Skills, headline…)"
-                    : "e.g. Tracker next steps, profile targeting, or negotiation prep…"
+                    : "Q&A: tracker, strategy, … · Save cv: “Update my cv.md …” or enable coach above"
               }
               value={input}
               onChange={(e) => setInput(e.target.value)}

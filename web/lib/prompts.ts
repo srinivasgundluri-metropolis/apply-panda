@@ -12,10 +12,16 @@ interface ChatHistoryItem {
   content: string;
 }
 
+export type BuildChatPromptOptions = {
+  /** Hosted canonical résumé (`resumes.content_md`) — read-only context for Q&A. */
+  cvMarkdownExcerpt?: string;
+};
+
 export function buildChatPrompt(
   userMessage: string,
   history: ChatHistoryItem[],
   candidateFirstName: string,
+  options?: BuildChatPromptOptions,
 ): string {
   let historyBlock = "";
   if (history.length > 0) {
@@ -28,13 +34,22 @@ export function buildChatPrompt(
     historyBlock = `\n\nPrevious conversation:\n${formatted}`;
   }
   const you = candidateFirstName || "the user";
+  const cvBlock = (() => {
+    const raw = options?.cvMarkdownExcerpt?.trim();
+    if (!raw) {
+      return "\n\n**Current résumé (hosted):** _empty — the user can paste content, use Profile → Résumé, or run **Résumé / profile coach** to sync `cv.md`._\n";
+    }
+    const clipped = raw.length > 28000 ? `${raw.slice(0, 28000)}\n\n…(truncated)` : raw;
+    return `\n\n**Current résumé markdown (hosted canon — read-only in this chat):**\n\n\`\`\`markdown\n${clipped}\n\`\`\`\n`;
+  })();
 
   return `You are ${you}'s career-ops assistant inside a Next.js dashboard. Answer their questions concisely in GitHub-flavored markdown.
 
 SCOPE — THIS CHAT TURN:
-- Focus on **profile, résumé/CV, evaluations, tracker, applications, targeting, and strategy** using the workspace paths below and anything the user pasted.
+- Focus on **profile, résumé/CV, evaluations, tracker, applications, targeting, and strategy** using the workspace paths below, the résumé excerpt below, and anything the user pasted.
+- You **cannot** write \`cv.md\` or profile files from this stream. If they want edits **saved**, say they can turn on **Résumé / profile coach** and send the same instruction, or use explicit wording like _"update my cv.md …"_ which the app may route to the coach apply pipeline automatically.
 - If they ask for **live job postings or a board scrape**, do **not** invent URLs. Point them to **Pipeline → Run scan** (ATS) or pasting specific posting URLs; this chat does not run LinkedIn job search.
-
+${cvBlock}
 LOCAL WORKSPACE (prefer this for "what's in my tracker / scan history" questions):
 - \`data/scan-history.tsv\` — every job offer the portal scanner has ever seen (columns include \`company\`, \`title\`, \`url\`, \`portal\`, \`status\`, \`first_seen\`, \`last_seen\`).
 - \`data/applications.md\` — the canonical application tracker (markdown table with \`#\`, \`Date\`, \`Company\`, \`Role\`, \`Score\`, \`Status\`, \`PDF\`, \`Report\`, \`Notes\`).
@@ -59,7 +74,7 @@ If (and only if) the user pasted **verbatim** job URLs or rows you are summarizi
 
 HARD RULES:
 - DO NOT write or edit files directly. The only state changes you may make are through \`add-to-scan.mjs\` when explicitly asked for a bulk save.
-- If the user asks whether to **regenerate** tailored CV/cover outputs after changing their résumé or profile, say: for each tracker row that is **not** **Applied** and already has tailored files (**one-page PDF** when Chromium works; HTML fallback otherwise in the hosted product), use **Tracker → Tailored documents → Regenerate** so downloads match the updated canon. They can also use **Résumé / profile coach** in Chat to persist edits first.
+- If the user asks whether to **regenerate** tailored CV/cover outputs after changing their résumé or profile, say: for each tracker row that is **not** **Applied** and already has tailored files (**one-page PDF** when Chromium works; HTML fallback otherwise in the hosted product), use **Tracker → Tailored documents → Regenerate** so downloads match the updated canon. They can persist résumé edits with **Résumé / profile coach** or an explicit **“update my cv.md …”** line in Chat.
 - DO NOT trigger evaluations, CV/CL generation, applications, or recruiter outreach. The user clicks the inline ⚡ Evaluate button (which the dashboard renders from your jobs-json block) — you do not run any evaluation script yourself.
 - If asked "evaluate this LinkedIn job", just emit the jobs-json block and reply: _"Click ⚡ Evaluate next to the row you want — it'll run the full A–G pipeline inline."_
 

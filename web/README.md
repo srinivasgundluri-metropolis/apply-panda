@@ -65,7 +65,7 @@ All tables are user-scoped with Supabase RLS.
 
 ## Route overview
 
-- `POST /api/chat/stream` -> LLM SSE chat
+- `POST /api/chat/stream` -> LLM SSE chat (injects hosted `resumes.content_md` excerpt for grounded Q&A)
 - `POST /api/eval/stream` -> LLM SSE evaluation output
 - `POST /api/docs/generate` -> one-page Letter HTML via model → PDF (Chromium) to Storage with HTML fallback; updates `applications` + `documents`
 - `POST /api/docs/persist-artifact` -> optional Markdown-only save (legacy)

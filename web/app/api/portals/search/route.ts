@@ -40,7 +40,8 @@ function toResults(
 
 /**
  * Job search for chat: same engine as Pipeline scan (curated ATS boards).
- * Filters come from per-user profile targeting (`target_roles`, `candidate.location`); optional keywords narrow titles. Read-only (no scan_history writes).
+ * Filters combine profile targeting (title/location positives) with portals YAML (`tracked_companies` + negatives);
+ * optional keywords narrow titles. Read-only (no scan_history writes).
  *
  * **No LLM** — ATS results are fetched via `@/lib/portal-scan` only. Chat may still call an LLM
  * afterward to summarize; this route does not.

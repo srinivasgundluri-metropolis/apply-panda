@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { DEFAULT_PORTAL_CATALOG_SIZE } from "@/lib/default-portal-catalog";
 import { Info, Loader2, Search } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,8 +28,10 @@ export function ScanRunner() {
           >
             Profile → Targeting
           </Link>{" "}
-          (primary/secondary roles, archetypes, and candidate location). We query every board in the hosted catalog (
-          {DEFAULT_PORTAL_CATALOG_SIZE} employers). Each run ranks matches by recency when the ATS exposes dates and
+          (primary/secondary roles, archetypes, and candidate location). Employer boards come from{" "}
+          <code className="rounded bg-muted px-1 py-px text-[11px]">tracked_companies</code> in your pasted portals YAML
+          (same as local <code className="rounded bg-muted px-1 py-px text-[11px]">portals.yml</code>). Each run ranks
+          matches by recency when the ATS exposes dates and
           saves up to 100 newest URLs to Scan results (skipping ones you already stored).
         </p>
       </div>

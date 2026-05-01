@@ -33,6 +33,11 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import type { Profile } from "@/lib/types";
+import {
+  hostedPortalsYamlTextFromStored,
+  parseHostedPortalsYamlText,
+  PortalsYamlUserError,
+} from "@/lib/portals-yaml-submit";
 
 interface Props {
   initial: Profile;
@@ -118,6 +123,14 @@ export function ProfileResumeEditor({
     (initial.narrative?.deal_breakers ?? []).join("\n"),
   );
 
+  const [portalsYamlDraft, setPortalsYamlDraft] = React.useState(() =>
+    hostedPortalsYamlTextFromStored(initial.portals ?? null),
+  );
+
+  React.useEffect(() => {
+    setPortalsYamlDraft(hostedPortalsYamlTextFromStored(initial.portals ?? null));
+  }, [initial.portals]);
+
   const [cvMarkdown, setCvMarkdown] = React.useState(initialCvMarkdown);
   const cvIsEmpty = cvMarkdown.trim().length === 0;
   const resumeCoachImportPrompt =
@@ -182,6 +195,19 @@ export function ProfileResumeEditor({
         toast.error("Archetypes are required.");
         return;
       }
+
+      let portalsPayload: Profile["portals"];
+      try {
+        portalsPayload = parseHostedPortalsYamlText(portalsYamlDraft);
+      } catch (e) {
+        if (e instanceof PortalsYamlUserError) {
+          toast.error(e.message);
+          setSaving(false);
+          return;
+        }
+        throw e;
+      }
+
       const payload: Profile = {
         candidate: {
           full_name: fullName.trim() || undefined,
@@ -204,8 +230,7 @@ export function ProfileResumeEditor({
           proof_points: splitList(proofPoints),
           deal_breakers: splitList(dealBreakers),
         },
-        /** Clear legacy per-user portals blob; ATS scan uses Targeting + built-in catalog. */
-        portals: null,
+        portals: portalsPayload,
       };
 
       const resProfile = await fetch("/api/profile", {
@@ -379,9 +404,10 @@ export function ProfileResumeEditor({
             <CardHeader>
               <CardTitle>Target roles</CardTitle>
               <CardDescription className="text-sm leading-relaxed">
-                Pipeline <strong>Scan job boards</strong> and Chat job-board search use these lines (plus{" "}
-                <strong>Location</strong> under Candidate) as title/location filters against the hosted ATS catalog.
-                The catalog itself is fixed in the product; you do not maintain a company list in the UI.
+                Pipeline <strong>Scan job boards</strong> and Chat ATS search match these role lines (plus{" "}
+                <strong>Location</strong> under Candidate). Which employers get queried is controlled by{" "}
+                <code className="text-xs">tracked_companies</code> in the portals snippet below—the same shape as career-ops{" "}
+                <code className="text-xs">portals.yml</code>.
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
@@ -407,6 +433,36 @@ export function ProfileResumeEditor({
                 onChange={setArchetypes}
                 placeholder="API platform"
                 required
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Employer ATS boards (`portals.yml`)</CardTitle>
+              <CardDescription className="text-sm leading-relaxed space-y-2">
+                <p>
+                  Paste the <strong>tracked_companies</strong> block from your local career-ops{" "}
+                  <code className="text-xs">portals.yml</code> (whole file works). Hosted scans only hit boards we can reach
+                  over Greenhouse/Ashby/Lever/Workday JSON APIs—matching <code className="text-xs">scan.mjs</code> behavior,
+                  not Playwright scraping.
+                </p>
+                <p>
+                  Optional: keep <strong>company_filter</strong>, <strong>title_filter.negative</strong>, and{" "}
+                  <strong>location_filter.negative</strong> lines from that file—they are preserved here.
+                </p>
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Label htmlFor="portals_yaml" className="sr-only">
+                Portals YAML
+              </Label>
+              <Textarea
+                id="portals_yaml"
+                value={portalsYamlDraft}
+                onChange={(e) => setPortalsYamlDraft(e.target.value)}
+                spellCheck={false}
+                className="min-h-[260px] font-mono text-xs leading-relaxed"
               />
             </CardContent>
           </Card>
@@ -459,7 +515,7 @@ export function ProfileResumeEditor({
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground max-w-lg">
-          Saves targeting and résumé markdown so ATS scans, search, and tailored documents stay in sync.
+          Saves targeting, portals YAML snippet, and résumé markdown so ATS scans stay aligned with local career-ops.
         </p>
         <Button type="submit" disabled={saving} size="lg">
           {saving ? (

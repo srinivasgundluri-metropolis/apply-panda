@@ -10,11 +10,11 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { normalizeHostedPortalsPayload } from "@/lib/hosted-profile-portals";
 import type { PortalsYamlConfig } from "@/lib/types";
-import { defaultCatalogCopy } from "@/lib/default-portal-catalog";
 
 const USER_PORTALS_REQUIRED_MSG =
-  "Portal scanner is not configured. Open Profile → Targeting and add at least one primary role, secondary role, or archetype (or set candidate location for location-only matching).";
+  "Portal scanner is not configured. Add targeting (roles / location), then paste tracked_companies from your career-ops portals.yml under Profile.";
 
 /** Thrown when profile targeting is insufficient for scan/search (roles + optional location). */
 export class UserPortalsConfigMissingError extends Error {
@@ -364,16 +364,6 @@ function positiveLineCount(lines: string[] | undefined): number {
   return (lines ?? []).filter((x) => String(x).trim().length > 0).length;
 }
 
-/**
- * Hosted scans merge the user’s portals stub with ApplyPanda’s built-in ATS
- * directory ({@link defaultCatalogCopy}). Saved `tracked_companies` on the
- * profile is ignored for fetch volume; optional `company_filter` on the scan config
- * still narrows which catalog boards run (only when present on the merged config).
- */
-export function mergeUserPortalsWithDefaultCatalog(cfg: PortalsYamlConfig): PortalsYamlConfig {
-  return { ...cfg, tracked_companies: defaultCatalogCopy() };
-}
-
 export function assertHostedScanHasTitleOrLocation(cfg: PortalsYamlConfig) {
   const tp = positiveLineCount(cfg.title_filter?.positive);
   const lp = positiveLineCount(cfg.location_filter?.positive);
@@ -396,8 +386,8 @@ function toStringList(v: unknown): string[] {
 
 /**
  * Builds scan filter config from Profile → Targeting (`target_roles`) and optional
- * `candidate.location`. Board list comes from `mergeUserPortalsWithDefaultCatalog`, not
- * from stored `tracked_companies`.
+ * `candidate.location`. Employer boards (`tracked_companies`) are merged in at load time
+ * from {@link normalizeHostedPortalsPayload} (`profiles.data.portals`).
  */
 export function buildPortalsScanConfigFromProfile(
   profileData: Record<string, unknown>,
@@ -446,8 +436,8 @@ export function buildPortalsScanConfigFromProfile(
 }
 
 /**
- * Loads scan filters from `profiles.data` targeting fields (not `profiles.data.portals`).
- * Title lines = primary + secondary + archetype roles; optional location from candidate.
+ * Loads hosted scan config: targeting positives from profile fields plus employer boards /
+ * negatives from `profiles.data.portals` (career-ops `portals.yml` equivalent).
  */
 export async function loadPortalsConfigResolved(
   supabase: SupabaseClient,
@@ -462,11 +452,37 @@ export async function loadPortalsConfigResolved(
     throw new UserPortalsConfigMissingError();
   }
   const rawProfile = data.data as Record<string, unknown>;
-  const built = buildPortalsScanConfigFromProfile(rawProfile);
-  if (built) return built;
-  throw new UserPortalsConfigMissingError(
-    "Add at least one primary role, secondary role, or archetype under Profile → Targeting (or set candidate location for location-only matching).",
-  );
+  const filters = buildPortalsScanConfigFromProfile(rawProfile);
+  if (!filters) {
+    throw new UserPortalsConfigMissingError(
+      "Add at least one primary role, secondary role, or archetype under Profile → Targeting (or set candidate location for location-only matching).",
+    );
+  }
+
+  const boards = normalizeHostedPortalsPayload(rawProfile.portals);
+  if (!boards?.tracked_companies?.length) {
+    throw new UserPortalsConfigMissingError(
+      "Paste tracked_companies from your career-ops portals.yml (Profile → Targeting). Role titles/locations stay in the targeting fields above; the YAML supplies employer ATS boards.",
+    );
+  }
+
+  const titlePos = filters.title_filter?.positive ?? [];
+  const locPos = filters.location_filter?.positive ?? [];
+  const titleNeg = boards.title_filter?.negative ?? [];
+  const locNeg = boards.location_filter?.negative ?? [];
+
+  return {
+    tracked_companies: boards.tracked_companies,
+    ...(boards.company_filter ? { company_filter: boards.company_filter } : {}),
+    title_filter: {
+      positive: titlePos,
+      ...(titleNeg.length ? { negative: titleNeg } : {}),
+    },
+    location_filter: {
+      ...(locPos.length ? { positive: locPos } : {}),
+      ...(locNeg.length ? { negative: locNeg } : {}),
+    },
+  };
 }
 
 /** Newest ATS timestamps first; roles without timestamps sort after dated ones (tie-break: URL desc). */
@@ -523,7 +539,7 @@ export interface CollectPortalJobsOpts {
   concurrency?: number;
 }
 
-/** Optional `company_filter` on the scan config narrows the default board catalog by employer name. */
+/** Optional `company_filter` on the scan config narrows tracked boards by employer name. */
 export function hostedScanCollectOptions(cfg: PortalsYamlConfig): CollectPortalJobsOpts {
   const raw = cfg.company_filter;
   const needle = typeof raw === "string" ? raw.trim() : "";
@@ -537,7 +553,7 @@ export async function collectAllTitleFilteredPortalJobs(
 ): Promise<{ config: PortalsYamlConfig; companiesScanned: number; jobs: PortalJob[] }> {
   assertHostedScanHasTitleOrLocation(cfg);
 
-  const scanCfg = mergeUserPortalsWithDefaultCatalog(cfg);
+  const scanCfg = cfg;
   const titleFilter = buildTitleFilter(scanCfg.title_filter);
   const locationFilter = buildLocationFilter(scanCfg.location_filter);
   const opts: CollectPortalJobsOpts = {
@@ -558,7 +574,7 @@ export async function collectAllTitleFilteredPortalJobs(
     throw new UserPortalsConfigMissingError(
       rawCf
         ? `No employer boards matched employer-name filter "${rawCf}". Try a shorter substring.`
-        : "No fetchable ATS boards resolved (unexpected).",
+        : "No supported ATS boards in tracked_companies: use careers_url/api values that resolve to Greenhouse, Ashby, Lever, or Workday CXS endpoints.",
     );
   }
 

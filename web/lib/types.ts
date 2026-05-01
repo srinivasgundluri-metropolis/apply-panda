@@ -156,7 +156,7 @@ export interface AddToScanResult {
   error?: string | null;
 }
 
-/** Same JSON shape as career-ops `portals.yml`. Hosted scans replace `tracked_companies` with the product catalog at runtime; optional legacy `profiles.data.portals` may still carry extras until cleared. */
+/** Same JSON shape as career-ops `portals.yml` subset: stored on the profile (`tracked_companies`, optional negatives / company_filter). */
 export interface PortalsTrackedCompany {
   name?: string;
   enabled?: boolean;
@@ -208,7 +208,7 @@ export interface Profile {
   narrative?: ProfileNarrative;
   language?: ProfileLanguage;
   comp_targets?: Record<string, unknown>;
-  /** ATS board list for scans and chat search; `null` clears it until you save valid JSON again. */
+  /** Employer boards (+ optional ATS negatives) synced from pasted `portals.yml`; merges with targeting for scans/chat. */
   portals?: PortalsYamlConfig | null;
   [key: string]: unknown;
 }

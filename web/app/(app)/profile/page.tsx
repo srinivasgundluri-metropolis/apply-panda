@@ -36,7 +36,7 @@ export default async function ProfilePage({
     <>
       <PageHeader
         title="Profile & résumé"
-        description="Edit targeting and résumé. ATS scans use your target roles, archetypes, and candidate location against the product’s built-in board catalog."
+        description="Edit targeting, portals.yml snippet (employer boards), and résumé. Role filters come from targeting; ATS scans query the boards listed in portals YAML."
       />
       <div className="px-8 py-6 max-w-4xl">
         <ProfileResumeEditor

@@ -1,11 +1,11 @@
 import type { PortalsTrackedCompany } from "@/lib/types";
 
 /**
- * Large curated list of ATS boards ApplyPanda can query without scraping
- * (Greenhouse, Ashby, Lever patterns only — see `detectPortalApi` in portal-scan.ts).
+ * Curated ATS boards ApplyPanda *can* query without scraping (Greenhouse, Ashby, Lever — see `detectPortalApi`).
  *
- * Hosted scans pull from **all** entries here unless the user sets `company_filter`
- * on their profile (substring match against each board’s display `name`).
+ * **Hosted ApplyPanda** does not use this list automatically: scans use `profiles.data.portals`
+ * YAML (`tracked_companies`) from Profile, same mental model as local `scan.mjs` + `portals.yml`.
+ * This catalog remains as a reusable reference/copy-paste seed for forks.
  */
 export const DEFAULT_PORTAL_CATALOG: readonly PortalsTrackedCompany[] = [
   { name: "Ada", enabled: true, careers_url: "https://job-boards.greenhouse.io/ada" },

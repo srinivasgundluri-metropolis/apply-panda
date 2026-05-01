@@ -33,7 +33,7 @@ export default async function ScanResultsPage() {
               <Search className="size-10 mx-auto text-muted-foreground mb-3" />
               <p className="font-medium mb-1">Scan history is empty</p>
               <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
-                Add roles and location under{" "}
+                Add roles and location plus a <code className="text-xs">tracked_companies</code> portals snippet under{" "}
                 <Link href="/profile?tab=yaml" className="underline underline-offset-2 font-medium">
                   Profile → Targeting
                 </Link>

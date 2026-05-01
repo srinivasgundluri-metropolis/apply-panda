@@ -30,15 +30,201 @@ export type CompanyFormRow = {
 /** How the user prefers to capture board URLs (both resolve to tracked_companies JSON). */
 export type BoardEntryMode = "tables" | "bulk";
 
-type TitlePreset = "any" | "engineering" | "ml_ai" | "product" | "custom";
+type TitlePreset = "any" | "engineering" | "ml_ai" | "product" | "usa_wide" | "custom";
 
 const TITLE_PRESET_LABEL: Record<TitlePreset, string> = {
   any: "Any job title (no keyword filter)",
   engineering: "Engineering & platform",
   ml_ai: "ML & AI",
   product: "Product & program",
+  usa_wide:
+    "US careers — wide keyword net (common US title phrases, OR across lines)",
   custom: "Custom (edit list below)",
 };
+
+/**
+ * Curated substrings seen in US job postings (knowledge work + tech-heavy).
+ * Filter logic: title matches if it includes **any** line (OR). Not an exhaustive SOC/ONET list.
+ */
+const USA_WIDE_TITLE_KEYWORDS: string[] = [
+  // Software & platform
+  "Software Engineer",
+  "Software Developer",
+  "Application Engineer",
+  "Full Stack",
+  "Front End",
+  "Frontend",
+  "Back End",
+  "Backend",
+  "Web Developer",
+  "Mobile Engineer",
+  "Staff Engineer",
+  "Principal Engineer",
+  "Distinguished Engineer",
+  "Engineering Manager",
+  "Director of Engineering",
+  "VP of Engineering",
+  "Head of Engineering",
+  "CTO",
+  "Platform Engineer",
+  "Infrastructure Engineer",
+  "Site Reliability",
+  "SRE",
+  "DevOps",
+  "Build Engineer",
+  "Release Engineer",
+  "Cloud Engineer",
+  "Solutions Architect",
+  "Cloud Architect",
+  "Enterprise Architect",
+  "Security Engineer",
+  "Cybersecurity",
+  "Information Security",
+  "Network Engineer",
+  "Systems Engineer",
+  "Systems Administrator",
+  "Database Administrator",
+  "Site Administrator",
+  "QA Engineer",
+  "Quality Engineer",
+  "Test Engineer",
+  "SDET",
+  "Automation Engineer",
+  "Firmware Engineer",
+  "Embedded Engineer",
+  "Hardware Engineer",
+  "Electrical Engineer",
+  "Mechanical Engineer",
+  "Manufacturing Engineer",
+  "Validation Engineer",
+  "Field Engineer",
+  "Support Engineer",
+  "Sales Engineer",
+  "Forward Deployed",
+  // Data & ML
+  "Data Engineer",
+  "Data Scientist",
+  "Machine Learning",
+  "MLOps",
+  "AI Engineer",
+  "Applied Scientist",
+  "Research Scientist",
+  "Deep Learning",
+  "Computer Vision",
+  "NLP",
+  "Natural Language",
+  "Generative AI",
+  "LLM",
+  "Data Analyst",
+  "Business Intelligence",
+  "Analytics Engineer",
+  "Quantitative",
+  "Statistician",
+  // Product, program, project
+  "Product Manager",
+  "Group Product Manager",
+  "Senior Product Manager",
+  "Product Owner",
+  "Technical Program",
+  "Program Manager",
+  "Project Manager",
+  "TPM",
+  "Product Designer",
+  "Product Marketing",
+  // Design & content
+  "UX Designer",
+  "UI Designer",
+  "User Experience",
+  "User Interface",
+  "Graphic Designer",
+  "Visual Designer",
+  "Content Designer",
+  "Technical Writer",
+  "Copywriter",
+  "Editor",
+  // IT & business systems
+  "Business Analyst",
+  "Systems Analyst",
+  "IT Manager",
+  "Service Desk",
+  "Help Desk",
+  "Desktop Support",
+  "SAP",
+  "Salesforce",
+  "Workday",
+  // Go-to-market
+  "Account Executive",
+  "Account Manager",
+  "Business Development",
+  "Sales Manager",
+  "Regional Sales",
+  "Customer Success",
+  "Implementation Consultant",
+  "Solutions Consultant",
+  "Marketing Manager",
+  "Digital Marketing",
+  "Growth Marketing",
+  "Brand Manager",
+  "Communications Manager",
+  "Social Media",
+  "SEO",
+  "Demand Generation",
+  // Operations & strategy
+  "Operations Manager",
+  "Business Operations",
+  "Chief of Staff",
+  "Strategy Manager",
+  "Management Consultant",
+  "Supply Chain",
+  "Logistics",
+  "Procurement",
+  "Program Director",
+  "General Manager",
+  // People & legal
+  "Human Resources",
+  "HR Business Partner",
+  "People Operations",
+  "Talent Acquisition",
+  "Recruiter",
+  "Compensation",
+  "Benefits",
+  "Attorney",
+  "Counsel",
+  "Paralegal",
+  "Compliance Manager",
+  "Risk Manager",
+  // Finance & accounting
+  "Financial Analyst",
+  "Finance Manager",
+  "Controller",
+  "Accountant",
+  "Staff Accountant",
+  "Auditor",
+  "Treasury",
+  "FP&A",
+  "Tax Manager",
+  "Payroll",
+  // Clinical & health (common US titles; not exhaustive)
+  "Registered Nurse",
+  "Nurse Practitioner",
+  "Physician Assistant",
+  "Physical Therapist",
+  "Occupational Therapist",
+  "Pharmacist",
+  "Medical Technologist",
+  "Clinical Research",
+  "Healthcare Administrator",
+  // Skilled trades & field (US postings)
+  "Electrician",
+  "Plumber",
+  "HVAC",
+  "Welder",
+  "Technician",
+  "Inspector",
+  "Estimator",
+  "Superintendent",
+  "Project Superintendent",
+];
 
 const TITLE_PRESET_POSITIVE: Record<
   Exclude<TitlePreset, "any" | "custom">,
@@ -46,31 +232,88 @@ const TITLE_PRESET_POSITIVE: Record<
 > = {
   engineering: [
     "Engineer",
-    "Software",
+    "Software Engineer",
+    "Software Developer",
+    "Developer",
     "Backend",
+    "Front End",
+    "Frontend",
+    "Full Stack",
     "Platform",
     "Infrastructure",
     "DevOps",
     "SRE",
+    "Site Reliability",
     "Security Engineer",
+    "Cloud Engineer",
+    "Embedded",
+    "Firmware",
+    "Hardware Engineer",
+    "QA Engineer",
+    "Test Engineer",
+    "SDET",
+    "Database",
+    "Data Engineer",
+    "Mobile Engineer",
+    "Python",
+    "Java ",
+    "Node",
+    "React",
+    "System Administrator",
+    "Network Engineer",
+    "Solutions Architect",
+    "Enterprise Architect",
+    "Release Engineer",
+    "Build Engineer",
   ],
   ml_ai: [
     "Machine Learning",
-    "ML",
-    "AI",
+    "ML Engineer",
+    "AI Engineer",
     "Deep Learning",
     "LLM",
+    "GenAI",
+    "Generative",
     "MLOps",
-    "Research Scientist",
     "Applied Scientist",
+    "Research Scientist",
+    "Computer Vision",
+    "NLP",
+    "Natural Language",
+    "Reinforcement Learning",
+    "Robotics",
+    "Autonomy",
+    "Data Scientist",
+    "Analytics Engineer",
+    "Statistician",
+    "Quantitative Research",
+    "Inference",
+    "Modeling",
+    "PyTorch",
+    "TensorFlow",
   ],
   product: [
     "Product Manager",
+    "Sr. Product Manager",
+    "Senior Product Manager",
+    "Group Product Manager",
+    "Principal Product Manager",
+    "Product Owner",
     "Program Manager",
-    "TPM",
     "Technical Program",
+    "Technical Program Manager",
+    "TPM",
     "Product Lead",
+    "Associate Product Manager",
+    "APM",
+    "Chief Product Officer",
+    "Director of Product",
+    "VP of Product",
+    "Head of Product",
+    "Product Marketing",
+    "Solutions Manager",
   ],
+  usa_wide: USA_WIDE_TITLE_KEYWORDS,
 };
 
 type LocationPreset = "any" | "remote" | "us" | "europe_uk" | "canada" | "custom";
@@ -299,10 +542,12 @@ function detectTitlePreset(lines: string[]): TitlePreset {
   const norm = (s: string) => s.trim().toLowerCase();
   const set = new Set(lines.map(norm).filter(Boolean));
   if (set.size === 0) return "any";
-  for (const key of ["engineering", "ml_ai", "product"] as const) {
+  for (const key of ["engineering", "ml_ai", "product", "usa_wide"] as const) {
     const preset = TITLE_PRESET_POSITIVE[key].map(norm);
+    const minMatch = key === "usa_wide" ? Math.min(24, preset.length) : Math.min(3, preset.length);
+    const maxExtra = key === "usa_wide" ? 80 : 2;
     const match = preset.filter((p) => set.has(p)).length;
-    if (match >= Math.min(3, preset.length) && set.size <= preset.length + 2) {
+    if (match >= minMatch && set.size <= preset.length + maxExtra) {
       return key;
     }
   }
@@ -689,7 +934,9 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
         <div className="space-y-3">
           <Label className="text-base font-medium">Roles — job titles</Label>
           <p className="text-sm text-muted-foreground">
-            Only postings whose titles pass these substring rules stay in results.
+            Only postings whose titles pass these substring rules stay in results. Lines are combined with{" "}
+            <strong className="text-foreground">OR</strong>: the title needs at least one include match.
+            Presets bundle common phrases (not every official US title occupation code).
           </p>
           <Select
             value={titlePreset}
@@ -718,8 +965,8 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
                 setTitlePreset("custom");
               }}
               disabled={titlePreset === "any"}
-              rows={4}
-              className="font-mono text-xs"
+              rows={titlePreset === "usa_wide" ? 16 : 6}
+              className="font-mono text-xs min-h-[120px]"
               placeholder="e.g. Engineer&#10;Machine Learning"
             />
           </div>

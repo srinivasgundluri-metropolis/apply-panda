@@ -31,7 +31,7 @@ APPLYPANDA_ALLOWED_EMAILS="user1@example.com,user2@example.com,user3@example.com
 # PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 #
 # Scan behavior:
-# - LinkedIn search is available in Chat via `/api/linkedin/search`
+# - `/api/linkedin/search` exists for integrations; AI Chat does not call it (use Pipeline scan for boards)
 # - Pipeline/ATS scan uses curated Greenhouse/Ashby/Lever/Workday boards via profile targeting filters
 ```
 

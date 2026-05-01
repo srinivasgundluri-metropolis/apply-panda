@@ -32,7 +32,7 @@ async function jsonResponseAfterApply(instruction: string): Promise<NextResponse
   if (regenCandidates.length > 0) {
     message +=
       "\n\n---\n\n### Regenerate tailored documents?\n" +
-      "Because your canon files changed, consider **regenerating** tailored ATS + full CV HTML " +
+      "Because your canon files changed, consider **regenerating** tailored ATS + full CV outputs " +
       "and/or cover letters for roles **not** yet marked **Applied** — so downloads match your new résumé and profile.\n\n" +
       "Open **[Tracker → Tailored documents](/tracker)** for each evaluated job and use " +
       "**Regenerate CVs**, **Regenerate letter**, or **Regenerate CVs + letter** as needed.\n\n" +

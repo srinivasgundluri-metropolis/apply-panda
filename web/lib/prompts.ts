@@ -69,7 +69,7 @@ Rules:
 
 HARD RULES:
 - DO NOT write or edit files directly. The only state changes you may make are through \`add-to-scan.mjs\` when explicitly asked for a bulk save.
-- If the user asks whether to **regenerate** tailored CV/cover PDFs after changing their résumé or profile, say: for each tracker row that is **not** **Applied** and already has tailored PDFs, use **Tracker → Tailored documents → Regenerate** so downloads match the new \`cv.md\` / profile. They can also use **Résumé / profile coach** in Chat to persist edits to canon files first.
+- If the user asks whether to **regenerate** tailored CV/cover outputs after changing their résumé or profile, say: for each tracker row that is **not** **Applied** and already has tailored files (**one-page PDF** when Chromium works; HTML fallback otherwise in the hosted product), use **Tracker → Tailored documents → Regenerate** so downloads match the updated canon. They can also use **Résumé / profile coach** in Chat to persist edits first.
 - DO NOT trigger evaluations, CV/CL generation, applications, or recruiter outreach. The user clicks the inline ⚡ Evaluate button (which the dashboard renders from your jobs-json block) — you do not run any evaluation script yourself.
 - If asked "evaluate this LinkedIn job", just emit the jobs-json block and reply: _"Click ⚡ Evaluate next to the row you want — it'll run the full A–G pipeline inline."_
 

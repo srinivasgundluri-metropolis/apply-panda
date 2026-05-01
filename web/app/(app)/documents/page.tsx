@@ -71,7 +71,7 @@ export default async function DocumentsPage() {
     <>
       <PageHeader
         title="CVs & Documents"
-        description="Tailored CVs and cover letters from the Tracker are saved as print-ready HTML in storage. Older Markdown-only runs may appear under drafts. Your master résumé is in the cv.md tab."
+        description="Tailored CVs and cover letters from the Tracker are rendered to one-page PDFs (Letter) when Chromium is available, with printable HTML as fallback. Older Markdown-only runs may appear under drafts. Your master résumé is in the cv.md tab."
       />
 
       <div className="px-8 py-6">
@@ -97,7 +97,7 @@ export default async function DocumentsPage() {
               title="Cover Letters"
               icon={Mail}
               files={cls}
-              empty="No cover letters yet — generate from the Tracker (HTML output)."
+              empty="No cover letters yet — generate from the Tracker (PDF or HTML fallback)."
             />
             <DocSection
               title="Markdown drafts (Tailored docs)"

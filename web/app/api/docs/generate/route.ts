@@ -14,14 +14,17 @@ import {
   extractHostedHtmlBlock,
   type HostedTailorContext,
 } from "@/lib/hosted-tailor-html";
+import type { Browser } from "puppeteer-core";
+import { htmlToPdfWithBrowser, launchPdfBrowser } from "@/lib/pdf-from-html";
 import {
   slugTailoredSegment,
+  uploadUserPdf,
   uploadUserTailoredHtml,
 } from "@/lib/tailored-docs-storage";
 
 export const dynamic = "force-dynamic";
 
-/** Vercel Pro+ can raise; Hobby still caps at 60s wall time. Model + uploads only (no Chromium). */
+/** Model + Chromium PDF on Vercel can need the full allowance. */
 export const maxDuration = 120;
 
 function sseSingleError(message: string): Response {
@@ -152,36 +155,92 @@ export async function POST(req: NextRequest) {
 
   const uid = auth.user.id;
   const slug = slugTailoredSegment(`${company}-${role}`);
-  /** Stable per tracker row × role slug — same paths on regenerate so uploads + DB rows replace instead of accumulating. */
   const basePath = `${uid}/tailored/${applicationNum}-${slug}`;
 
   const log: string[] = [];
 
-  /** Upload print-oriented HTML only (PDF/DOCX are not produced). */
-  const saveTailoredHtml = async (args: {
+  const skipPdfEnv = ["1", "true", "yes"].includes(
+    (process.env.APPLYPANDA_SKIP_PDF ?? "").trim().toLowerCase(),
+  );
+  if (skipPdfEnv) {
+    log.push(
+      "ℹ️ APPLYPANDA_SKIP_PDF — skipping Chromium; saving one-page printable HTML only.",
+    );
+  }
+
+  const pdfBrowserRef: { current: Browser | null } = { current: null };
+
+  /** Target: single-page Letter PDF when Chromium works; else printable HTML fallback. Tracker stores the canonical path. */
+  const saveTailored = async (args: {
     html: string;
-    storagePath: string;
-    displayName: string;
+    pdfStoragePath: string;
+    pdfDisplayName: string;
+    htmlDisplayName: string;
     kind: "cv" | "cl";
     metadata: Record<string, unknown>;
     logTag: string;
   }): Promise<string> => {
-    const { html, storagePath, displayName, kind, metadata, logTag } = args;
-    log.push(`→ Saving ${logTag}: printable HTML (${displayName})`);
-    await uploadUserTailoredHtml({
-      supabase: auth.supabase,
-      userId: uid,
-      storagePath,
+    const {
       html,
-      displayName,
+      pdfStoragePath,
+      pdfDisplayName,
+      htmlDisplayName,
       kind,
-      metadata: {
-        ...metadata,
-        format: "html_printable",
-      },
-    });
-    log.push(`✓ Saved ${logTag} HTML → ${storagePath}`);
-    return storagePath;
+      metadata,
+      logTag,
+    } = args;
+    const htmlStoragePath = pdfStoragePath.replace(/\.pdf$/i, ".html");
+
+    const saveHtml = async (reason: string): Promise<string> => {
+      log.push(`→ ${reason} — ${logTag}: saving printable HTML (${htmlDisplayName})`);
+      await uploadUserTailoredHtml({
+        supabase: auth.supabase,
+        userId: uid,
+        storagePath: htmlStoragePath,
+        html,
+        displayName: htmlDisplayName,
+        kind,
+        metadata: {
+          ...metadata,
+          format: "html_printable",
+        },
+      });
+      log.push(`✓ Saved ${logTag} HTML → ${htmlStoragePath}`);
+      return htmlStoragePath;
+    };
+
+    if (skipPdfEnv) {
+      return saveHtml("PDF disabled by env");
+    }
+
+    try {
+      if (!pdfBrowserRef.current) {
+        pdfBrowserRef.current = await launchPdfBrowser();
+        log.push("✓ Headless browser ready");
+      }
+    } catch (e) {
+      return saveHtml(`Headless browser failed (${(e as Error).message})`);
+    }
+
+    try {
+      const pdfBuf = await htmlToPdfWithBrowser(pdfBrowserRef.current, html);
+      await uploadUserPdf({
+        supabase: auth.supabase,
+        userId: uid,
+        storagePath: pdfStoragePath,
+        buffer: pdfBuf,
+        displayName: pdfDisplayName,
+        kind,
+        metadata: { ...metadata, format: "pdf" },
+      });
+      log.push(`✓ Saved ${logTag} PDF (one page target) → ${pdfStoragePath}`);
+      return pdfStoragePath;
+    } catch (e) {
+      log.push(
+        `⚠️ PDF rendering failed for ${logTag}: ${(e as Error).message}`,
+      );
+      return saveHtml("Falling back after PDF failure");
+    }
   };
 
   try {
@@ -190,7 +249,7 @@ export async function POST(req: NextRequest) {
     let clStorage: string | null = null;
 
     if (kind === "cv" || kind === "both") {
-      log.push("→ Generating ATS HTML (model)…");
+      log.push("→ Generating ATS HTML (model, one-page layout)…");
       const atsText = await runHtmlModel(buildHostedAtsHtmlPrompt(ctx), model);
       const atsHtml = extractHostedHtmlBlock(atsText);
       if (!atsHtml) {
@@ -199,7 +258,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      log.push("→ Generating full-length CV HTML (model)…");
+      log.push("→ Generating full CV HTML (model, one-page layout)…");
       const fullText = await runHtmlModel(buildHostedFullHtmlPrompt(ctx), model);
       const fullHtml = extractHostedHtmlBlock(fullText);
       if (!fullHtml) {
@@ -208,10 +267,11 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      atsStorage = await saveTailoredHtml({
+      atsStorage = await saveTailored({
         html: atsHtml,
-        storagePath: `${basePath}-ats.html`,
-        displayName: `${company} · ${role} · ATS CV.html`,
+        pdfStoragePath: `${basePath}-ats.pdf`,
+        pdfDisplayName: `${company} · ${role} · ATS CV.pdf`,
+        htmlDisplayName: `${company} · ${role} · ATS CV.html`,
         kind: "cv",
         metadata: {
           application_num: applicationNum,
@@ -221,10 +281,11 @@ export async function POST(req: NextRequest) {
         logTag: "ATS CV",
       });
 
-      fullStorage = await saveTailoredHtml({
+      fullStorage = await saveTailored({
         html: fullHtml,
-        storagePath: `${basePath}-full.html`,
-        displayName: `${company} · ${role} · Full CV.html`,
+        pdfStoragePath: `${basePath}-full.pdf`,
+        pdfDisplayName: `${company} · ${role} · Full CV.pdf`,
+        htmlDisplayName: `${company} · ${role} · Full CV.html`,
         kind: "cv",
         metadata: {
           application_num: applicationNum,
@@ -236,7 +297,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (kind === "cl" || kind === "both") {
-      log.push("→ Generating cover letter HTML (model)…");
+      log.push("→ Generating cover letter HTML (model, one-page layout)…");
       const clText = await runHtmlModel(buildHostedCoverHtmlPrompt(ctx), model);
       const clHtml = extractHostedHtmlBlock(clText);
       if (!clHtml) {
@@ -245,10 +306,11 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      clStorage = await saveTailoredHtml({
+      clStorage = await saveTailored({
         html: clHtml,
-        storagePath: `${basePath}-cover.html`,
-        displayName: `${company} · ${role} · Cover letter.html`,
+        pdfStoragePath: `${basePath}-cover.pdf`,
+        pdfDisplayName: `${company} · ${role} · Cover letter.pdf`,
+        htmlDisplayName: `${company} · ${role} · Cover letter.html`,
         kind: "cl",
         metadata: {
           application_num: applicationNum,
@@ -262,7 +324,6 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
       pdf: "✅",
     };
-    /** Clear stale Word paths from prior product versions. */
     if (kind === "cv" || kind === "both") {
       appPatch.cv_ats_docx_path = null;
       appPatch.cv_full_docx_path = null;
@@ -294,11 +355,15 @@ export async function POST(req: NextRequest) {
 
     log.push("");
     log.push(
-      "✅ Done — printable HTML is in Documents / tracker. Use browser Print → Save as PDF if you need a PDF.",
+      "✅ Done — downloads are PDF when Chromium succeeded (.pdf paths), else printable HTML. Layout is modeled for one Letter page each.",
     );
     return sseFromText(log.join("\n"), 0);
   } catch (e) {
     const msg = (e as Error).message || "Document generation failed";
     return sseFromText(`${log.join("\n")}\n\n⚠️ ${msg}`, 1);
+  } finally {
+    if (pdfBrowserRef.current) {
+      await pdfBrowserRef.current.close().catch(() => {});
+    }
   }
 }

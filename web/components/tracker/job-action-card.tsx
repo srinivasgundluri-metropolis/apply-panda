@@ -40,7 +40,7 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
   const [bumpKey, setBumpKey] = React.useState(0);
 
   const applied = row.status.trim() === "Applied";
-  /** Replace stored tailored HTML only before you mark the row Applied. */
+  /** Replace stored tailored PDF/HTML only before you mark the row Applied. */
   const canOverwrite = !applied;
 
   const trigger = (kind: DocKind, regenerate = false) => {
@@ -62,7 +62,7 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
       return;
     }
     toast.success(
-      "Tailored HTML saved — open from Documents or the downloads below.",
+      "Tailored documents saved — open PDFs (or HTML fallback) below or in Documents.",
     );
     router.refresh();
   };
@@ -124,7 +124,7 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
       <div className="flex flex-wrap gap-2">
         {row.cvAtsDownload ? (
           <Button asChild variant="secondary" size="sm">
-            <a href={row.cvAtsDownload} download title="ATS CV (HTML, print-ready)">
+            <a href={row.cvAtsDownload} download title="ATS CV (PDF or HTML fallback)">
               <Download className="size-4" />
               ATS CV
             </a>
@@ -162,7 +162,7 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
         ) : null}
         {row.hasCl && row.clDownload ? (
           <Button asChild variant="secondary" size="sm">
-            <a href={row.clDownload} download title="Cover letter (HTML, print-ready)">
+            <a href={row.clDownload} download title="Cover letter (PDF or HTML fallback)">
               <Download className="size-4" />
               Cover Letter
             </a>

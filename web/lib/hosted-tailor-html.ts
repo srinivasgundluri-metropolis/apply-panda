@@ -1,6 +1,6 @@
 /**
- * Prompts + parsing for hosted Tailored docs: model emits print-ready HTML
- * uploaded to storage as the canonical artifact (use Print → Save as PDF locally if needed).
+ * Prompts + parsing for hosted Tailored docs: model emits print-ready HTML that
+ * the server turns into **single-page PDFs** (US Letter) when Chromium is available.
  */
 
 function trimContext(s: string, max: number): string {
@@ -17,19 +17,24 @@ export interface HostedTailorContext {
   coverLetterVoice: string;
 }
 
-const HTML_RULES = `HTML requirements (both documents):
+const ONE_PAGE_RULE = `**Single printed page (mandatory):** The output MUST fit on **exactly one US Letter (8.5×11 in) page** when printed or rendered to PDF (no second page, no clipped overflow). You must **shorten** content (drop or merge older roles, trim bullets, tighten skills) until it fits — do not assume the engine will auto-shrink. In embedded CSS include \`@page { size: letter; margin: 0.45in; }\` and use compact print styles: body ~9.5–10.5pt for résumés or ~11pt for cover letters, line-height ~1.15–1.25, tight section gaps.`;
+
+const HTML_RULES = `HTML requirements (all documents):
 - Standalone file: <!DOCTYPE html>, <html lang="en">, embedded <style> only (no external CSS/JS/fonts).
 - Letter paper, print-friendly black-on-white (no emoji, no remote assets).
 - No scripts; no decorative graphics or charts.
 - Use semantic markup; keep content honest — only facts from SOURCE_CV and REPORT.
+${ONE_PAGE_RULE}
 
-Cover letters: professional business letter proportions (still one column).
+Cover letters: professional business letter layout; **3 short paragraphs + closing** on one page.
 
-Résumés (ATS + Full variants only — follow Stanford Career Education chronological style):
-- **Layout conventions** (mirror Stanford sample résumés): margins not below ~1 inch; body text **≥10 pt** (target **11 pt** serif on screen/PDF via CSS); left-aligned blocks; ample white space.
-- **Typography** in embedded CSS: serif stack such as Times New Roman, Times, or Charter for body copy; headings may stay bold serif or clean sans accents — keep ATS simplicity (no ornate fonts).
-- **Structure**: reverse chronological order. Typical section ordering (adapt titles to SOURCE_CV facts): concise **CONTACT LINE** under an **H1** with your legal name → **Education** (most recent first) → **Experience** / **Professional Experience** (most recent first, title | organization | Location; date range flush right on same conceptual line via flex or aligned spans, then indented bullet lines starting with strong action verbs) → optional splits like Research / Teaching / Volunteering → **Skills** / **Technical Skills** or **Projects** only if supported by SOURCE_CV.
-- **Bullets**: one line where possible; lead with verbs; quantify when SOURCE_CV supplies numbers — never invent metrics.
+Résumés (ATS + Full — Stanford-style chronological, both still **one page each**):
+- **ATS variant:** keyword-rich, slightly denser spacing; smallest readable body size within the one-page rule.
+- **Full variant:** same facts as ATS but slightly more readable phrasing in bullets — still **one page**; do not add enough text to spill to page 2.
+- **Layout:** left-aligned blocks; ~0.45in effective side margins in CSS; reverse chronological order.
+- **Typography:** Times New Roman, Times, or Charter for body; simple headings.
+- **Structure:** CONTACT under H1 (name) → Education (if present) → Experience (most recent first, title | org | dates, tight bullets) → Skills/Projects only if supported by SOURCE_CV.
+- **Bullets:** one line when possible; action verbs; quantify only from SOURCE_CV — never invent metrics.
 `;
 
 export function buildHostedAtsHtmlPrompt(ctx: HostedTailorContext): string {
@@ -57,7 +62,7 @@ ${trimContext(ctx.reportExcerpt, 12_000)}
 
 Output exactly ONE block in this form (nothing before or after the tags):
 <<<HOSTED_HTML>>>
-<!DOCTYPE html> ... complete ATS-style CV: Stanford-style chronological single column, keyword-rich bullets, serif ~11pt CSS, generous margins (~1 in) ...
+<!DOCTYPE html> ... complete **one-page** ATS-style CV: Stanford-style chronological single column, keyword-rich compact bullets, serif CSS per rules above ...
 <<<END_HOSTED_HTML>>>`;
 }
 
@@ -86,7 +91,7 @@ ${trimContext(ctx.reportExcerpt, 12_000)}
 
 Output exactly ONE block:
 <<<HOSTED_HTML>>>
-<!DOCTYPE html> ... Stanford-style chronological résumé: fuller bullets than ATS, serif typography, crisp section headers, reverse-chronological Experience + Education, same facts as ATS ...
+<!DOCTYPE html> ... **one-page** Stanford-style résumé: slightly fuller phrasing than ATS but same facts, same one-page density constraint ...
 <<<END_HOSTED_HTML>>>`;
 }
 
@@ -95,7 +100,7 @@ export function buildHostedCoverHtmlPrompt(ctx: HostedTailorContext): string {
     ? `\nVOICE / STRUCTURE PREFERENCES:\n${trimContext(ctx.coverLetterVoice, 4000)}\n`
     : "";
 
-  return `You are drafting a cover letter as a single print-ready HTML page (user may Print → Save as PDF if needed).
+  return `You are drafting a **one-page** cover letter as print-ready HTML (server exports PDF).
 
 ${HTML_RULES}
 
@@ -111,7 +116,7 @@ REPORT / JOB CONTEXT:
 ${trimContext(ctx.reportExcerpt, 10_000)}
 ---
 
-Write 3–4 short paragraphs plus a closing line. Do not invent achievements.
+Write 3 short paragraphs plus a brief closing — must stay on **one** printed page. Do not invent achievements.
 
 Output exactly ONE block:
 <<<HOSTED_HTML>>>

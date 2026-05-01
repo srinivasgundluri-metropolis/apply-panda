@@ -53,8 +53,8 @@ interface Props {
  * action so tailored CV/cover-letter runs always read fresh canonical data.
  *
  * Tailored document generation expects:
- * - **ATS + Full CV** — two print-ready HTML files per role (`-ats`/`-full` suffix).
- * - Cover letter is a separate HTML file per role (see Hosted tailor prompts).
+ * - **ATS + Full CV** — two one-page artifacts per role (`-ats`/`-full`), usually `.pdf`.
+ * - Cover letter — separate one-page file per role (`-cover`).
  */
 export function ProfileResumeEditor({
   initial,
@@ -243,9 +243,8 @@ export function ProfileResumeEditor({
                 Edit Markdown for <code className="text-xs">cv.md</code> in the
                 repo root — bullet roles, impact metrics, projects, and education.
                 The tailored-CV generator reads this verbatim and produces{" "}
-                <strong>two</strong> HTML files per role: an{" "}
-                <strong>ATS-optimized</strong> variant and a{" "}
-                <strong>full-length</strong> variant (print-ready in the browser).
+                <strong>two</strong> one-page outputs per role: an{" "}
+                <strong>ATS-optimized</strong> variant and a denser reader-friendly variant, exported as PDF when the server has Chromium (HTML fallback otherwise).
               </CardDescription>
             </CardHeader>
             <CardContent>

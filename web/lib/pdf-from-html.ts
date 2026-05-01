@@ -258,7 +258,8 @@ export async function htmlToPdfWithBrowser(
     const pdf = await page.pdf({
       format: "Letter",
       printBackground: true,
-      margin: { top: "0.5in", bottom: "0.5in", left: "0.5in", right: "0.5in" },
+      preferCSSPageSize: true,
+      margin: { top: "0.45in", bottom: "0.45in", left: "0.45in", right: "0.45in" },
     });
     return Buffer.from(pdf);
   } finally {

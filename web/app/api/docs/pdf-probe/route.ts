@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET — returns launcher environment + tries one Puppeteer/Chromium startup.
- * Debug Chromium/Puppeteer launcher (legacy). Tailored docs are HTML-only; use when
- * investigating optional PDF tooling. Open logged-in, then `/api/docs/pdf-probe`.
+ * Debug Chromium/Puppeteer launcher for tailored PDF export. Open logged-in, then
+ * `/api/docs/pdf-probe`, copy JSON for issues.
  */
 export async function GET() {
   const auth = await requireApiUser();

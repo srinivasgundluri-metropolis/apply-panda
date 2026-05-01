@@ -22,6 +22,7 @@ Set these in Vercel Project Settings -> Environment Variables:
 - `OPENAI_FALLBACK_MODELS` (optional comma-separated fallback list for 429/503 mitigation)
 - `APPLYPANDA_ALLOWED_EMAILS` (comma-separated allowlist for access control)
 - `APPLYPANDA_LOCKDOWN` (optional, set `true` to force global 503 maintenance mode)
+- `APPLYPANDA_SKIP_PDF` (optional, `1` / `true` / `yes` — never start Chromium; tailor flow uploads **printable HTML** only; use when serverless PDF stays broken)
 - `SMTP_HOST` (optional)
 - `SMTP_PORT` (optional, default 587)
 - `SMTP_SECURE` (optional, `true`/`false`)
@@ -36,7 +37,7 @@ Set these in Vercel Project Settings -> Environment Variables:
 - Install command: `npm install`
 - Build command: `npm run build`
 
-**Tailored PDFs** (`/api/docs/generate`): on **deployed** Vercel (Linux, `VERCEL_ENV` `preview`|`production`) this uses `puppeteer-core` + `@sparticuz/chromium`. The resolver passes an explicit **`node_modules/@sparticuz/chromium/bin`** path (Next bundles break Sparticuz’s default `__dirname`). **`web/vercel.json`** sets **120s** `maxDuration` for this route. On **Fluid / Active CPU** billing, per-function **`memory` in `vercel.json` is ignored** — configure memory (and related limits) in the Vercel project **Functions** UI instead; Chromium PDFs need enough provisioned memory or they OOM. **`vercel dev`** is detected via `VERCEL_REGION=dev1` and/or missing preview/production env — install **Chrome**, **Edge**, or **Brave** locally, or set **`PUPPETEER_EXECUTABLE_PATH`**. If you copied hosted env vars into Linux dev and the wrong Chromium runs, use **`APPLYPANDA_FORCE_LOCAL_CHROME=1`**. If launch still fails in production on **ARM** serverless regions, Sparticuz’s current build is aimed at **x86** Lambda-style runtimes — pick an x86 region or an alternate PDF pipeline.
+**Tailored documents** (`/api/docs/generate`): **tries PDF first** (`puppeteer-core` + `@sparticuz/chromium` on deployed Linux `preview`|`production`). **If Chromium fails to start or `page.pdf()` throws, the route automatically saves printable `.html` to the same storage paths (`.pdf` → `.html`), updates the tracker, and returns exit code 0** — open the file → **Print → Save as PDF**. Set **`APPLYPANDA_SKIP_PDF`** to skip Chromium entirely. The Sparticuz resolver passes an explicit **`node_modules/@sparticuz/chromium/bin`** path (Next bundles break Sparticuz’s default `__dirname`). **`web/vercel.json`** sets **120s** `maxDuration` for this route. On **Fluid / Active CPU** billing, per-function **`memory` in `vercel.json` is ignored** — configure memory (and related limits) in the Vercel project **Functions** UI instead; Chromium PDFs need enough provisioned memory or they OOM. **`vercel dev`** is detected via `VERCEL_REGION=dev1` and/or missing preview/production env — install **Chrome**, **Edge**, or **Brave** locally, or set **`PUPPETEER_EXECUTABLE_PATH`**. If you copied hosted env vars into Linux dev and the wrong Chromium runs, use **`APPLYPANDA_FORCE_LOCAL_CHROME=1`**. If launch still fails in production on **ARM** serverless regions, Sparticuz’s current build is aimed at **x86** Lambda-style runtimes — pick an x86 region or an alternate PDF pipeline.
 
 **PDF troubleshooting (step-by-step):**
 

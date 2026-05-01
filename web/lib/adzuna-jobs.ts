@@ -27,20 +27,45 @@ export function forceHostedAtsCatalogOnly(): boolean {
 }
 
 /** Title and location phrases we send as Adzuna `what` / `where`. */
+function uniqueNonEmpty(lines: string[]): string[] {
+  return [...new Set(lines.map((x) => x.trim()).filter(Boolean))];
+}
+
+function normalizeLocationHint(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/^[,.\s]+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function selectAdzunaWhere(locs: string[]): string {
+  if (locs.length === 0) return "";
+  const norm = locs.map(normalizeLocationHint).filter(Boolean);
+  if (norm.length === 0) return "";
+  if (norm.some((x) => x === "united states" || x === "usa" || x === "u.s." || x === "us")) {
+    return "United States";
+  }
+  const meaningful = norm.filter((x) => x.length >= 3 && !/^[a-z]{2}$/.test(x));
+  return (meaningful[0] ?? norm[0] ?? "").slice(0, 120);
+}
+
+/**
+ * Adzuna query builder:
+ * - returns title phrases as separate `what` queries (broader, less brittle)
+ * - picks a single clean `where` phrase (instead of concatenating many hints)
+ */
 export function portalsAdzunaWhatWhere(cfg: PortalsYamlConfig): {
-  what: string;
+  whatQueries: string[];
   where: string;
 } {
-  const titles = (cfg.title_filter?.positive ?? [])
-    .map((s) => String(s).trim())
-    .filter(Boolean);
-  const locs = (cfg.location_filter?.positive ?? [])
-    .map((s) => String(s).trim())
-    .filter(Boolean);
-  return {
-    what: titles.join(" ").trim().slice(0, 200),
-    where: locs.join(", ").trim().slice(0, 200),
-  };
+  const titles = uniqueNonEmpty((cfg.title_filter?.positive ?? []).map(String));
+  const locs = uniqueNonEmpty((cfg.location_filter?.positive ?? []).map(String));
+  const whatQueries = titles.length
+    ? titles.slice(0, 8).map((x) => x.slice(0, 120))
+    : [""];
+  const where = selectAdzunaWhere(locs);
+  return { whatQueries, where };
 }
 
 function locationLineFromHit(hit: Record<string, unknown>): string {
@@ -90,79 +115,84 @@ export async function fetchAdzunaPortalJobs(
     "us";
   const country = /^[a-z]{2}$/.test(rawCountry) ? rawCountry : "us";
 
-  const { what, where } = portalsAdzunaWhatWhere(cfg);
+  const { whatQueries, where } = portalsAdzunaWhatWhere(cfg);
 
   const cap = Math.min(100, Math.max(1, maxResults));
   const perPage = Math.min(50, cap);
-
-  /** Adzuna page index is path segment `{page}` starting at 1. */
-  const pages = Math.ceil(cap / perPage);
   const out: AdzunaPortalJob[] = [];
   const seenUrl = new Set<string>();
+  const queryCount = Math.max(1, whatQueries.length);
+  const perQueryCap = Math.max(15, Math.ceil(cap / queryCount) + 8);
 
-  for (let p = 1; p <= pages && out.length < cap; p++) {
-    const q = new URLSearchParams({
-      app_id: appId,
-      app_key: appKey,
-      results_per_page: String(Math.min(perPage, cap - out.length)),
-    });
-    if (what) q.set("what", what);
-    if (where) q.set("where", where);
+  for (const what of whatQueries) {
+    if (out.length >= cap) break;
+    const queryBudget = Math.min(perQueryCap, cap - out.length);
+    const pages = Math.ceil(queryBudget / perPage);
 
-    const url = `https://api.adzuna.com/v1/api/jobs/${encodeURIComponent(country)}/search/${p}?${q.toString()}`;
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15_000);
-    let json: unknown;
-    try {
-      const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Adzuna HTTP ${res.status}: ${text.slice(0, 300)}`);
-      }
-      json = await res.json();
-    } finally {
-      clearTimeout(timer);
-    }
-
-    const hits = json as Record<string, unknown>;
-    const results = Array.isArray(hits.results)
-      ? (hits.results as Record<string, unknown>[])
-      : [];
-
-    if (results.length === 0) break;
-
-    for (const hit of results) {
-      const title = String(hit.title ?? "").trim();
-      const redirect = String(hit.redirect_url ?? "").trim();
-      const compRaw = hit.company;
-      let company =
-        compRaw &&
-        typeof compRaw === "object" &&
-        typeof (compRaw as Record<string, unknown>).display_name === "string"
-          ? String((compRaw as Record<string, unknown>).display_name).trim()
-          : "";
-      if (!company) company = String(hit.company_name ?? "").trim();
-      const location = locationLineFromHit(hit);
-      const createdRaw = hit.created;
-      let postedAt: number | undefined;
-      if (typeof createdRaw === "string") {
-        const t = Date.parse(createdRaw);
-        if (Number.isFinite(t)) postedAt = t;
-      }
-
-      if (!redirect || !title || seenUrl.has(redirect)) continue;
-      seenUrl.add(redirect);
-      out.push({
-        title,
-        url: redirect,
-        company: company || "Employer",
-        location,
-        source: "adzuna",
-        ...(postedAt !== undefined ? { postedAt } : {}),
+    for (let p = 1; p <= pages && out.length < cap; p++) {
+      const q = new URLSearchParams({
+        app_id: appId,
+        app_key: appKey,
+        results_per_page: String(Math.min(perPage, cap - out.length)),
       });
+      if (what) q.set("what", what);
+      if (where) q.set("where", where);
 
-      if (out.length >= cap) break;
+      const url = `https://api.adzuna.com/v1/api/jobs/${encodeURIComponent(country)}/search/${p}?${q.toString()}`;
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15_000);
+      let json: unknown;
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`Adzuna HTTP ${res.status}: ${text.slice(0, 300)}`);
+        }
+        json = await res.json();
+      } finally {
+        clearTimeout(timer);
+      }
+
+      const hits = json as Record<string, unknown>;
+      const results = Array.isArray(hits.results)
+        ? (hits.results as Record<string, unknown>[])
+        : [];
+
+      if (results.length === 0) break;
+
+      for (const hit of results) {
+        const title = String(hit.title ?? "").trim();
+        const redirect = String(hit.redirect_url ?? "").trim();
+        const compRaw = hit.company;
+        let company =
+          compRaw &&
+          typeof compRaw === "object" &&
+          typeof (compRaw as Record<string, unknown>).display_name === "string"
+            ? String((compRaw as Record<string, unknown>).display_name).trim()
+            : "";
+        if (!company) company = String(hit.company_name ?? "").trim();
+        const location = locationLineFromHit(hit);
+        const createdRaw = hit.created;
+        let postedAt: number | undefined;
+        if (typeof createdRaw === "string") {
+          const t = Date.parse(createdRaw);
+          if (Number.isFinite(t)) postedAt = t;
+        }
+
+        if (!redirect || !title || seenUrl.has(redirect)) continue;
+        seenUrl.add(redirect);
+        out.push({
+          title,
+          url: redirect,
+          company: company || "Employer",
+          location,
+          source: "adzuna",
+          ...(postedAt !== undefined ? { postedAt } : {}),
+        });
+
+        if (out.length >= cap) break;
+      }
     }
   }
 

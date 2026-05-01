@@ -505,7 +505,7 @@ export async function collectAllTitleFilteredPortalJobs(
     };
     const companyNeedle = (opts.companyNameContains ?? "").trim().toLowerCase();
     const rawJobs = await fetchAdzunaPortalJobs(cfg, HOSTED_SCAN_MATCH_LIMIT);
-    const { what, where } = portalsAdzunaWhatWhere(cfg);
+    const { whatQueries, where } = portalsAdzunaWhatWhere(cfg);
     /**
      * Adzuna already applies `what` / `where`. Re-applying location *positives*
      * client-side often drops every row because ATS snippets omit or abbreviate
@@ -522,7 +522,8 @@ export async function collectAllTitleFilteredPortalJobs(
     let filtered = rawJobs.filter(
       (j) => j.url.trim() && titleNegOnly(j.title) && locNegOnly(j.location ?? ""),
     );
-    if (!what.trim()) {
+    const hasWhat = whatQueries.some((q) => q.trim().length > 0);
+    if (!hasWhat) {
       const titleFilter = buildTitleFilter(cfg.title_filter);
       filtered = filtered.filter((j) => titleFilter(j.title));
     }

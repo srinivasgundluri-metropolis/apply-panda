@@ -235,7 +235,7 @@ export async function launchPdfBrowser(): Promise<Browser> {
           ? " Vercel ARM functions are not compatible with this Sparticuz x86 Chromium build."
           : "";
       throw new Error(
-        `${inner}${binHint}${archHint} Bump function memory in Vercel (see web/vercel.json), or set APPLYPANDA_FORCE_LOCAL_CHROME=1 and PUPPETEER_EXECUTABLE_PATH on a machine with Chrome.`,
+        `${inner}${binHint}${archHint} Raise function memory in the Vercel project (Fluid Compute ignores memory in vercel.json), or set APPLYPANDA_FORCE_LOCAL_CHROME=1 and PUPPETEER_EXECUTABLE_PATH on a machine with Chrome.`,
       );
     }
   }

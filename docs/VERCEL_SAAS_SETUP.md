@@ -7,7 +7,8 @@ This document describes production setup for hosted ApplyPanda (Vercel + Supabas
 1. Create a Supabase project.
 2. In SQL editor, run `web/supabase/schema.sql`.
 3. Create a storage bucket named `documents` (private).
-4. In Auth settings, configure email auth (password + optional confirmation).
+4. In the SQL editor, run `web/supabase/storage-documents-policies.sql` so authenticated users can read/write objects under `{their_user_id}/…` (required for tailored draft uploads).
+5. In Auth settings, configure email auth (password + optional confirmation).
 
 ## 2) Vercel environment variables
 
@@ -35,6 +36,8 @@ Set these in Vercel Project Settings -> Environment Variables:
 - Install command: `npm install`
 - Build command: `npm run build`
 
+**Tailored PDFs** (`/api/docs/generate`): uses `puppeteer-core` + `@sparticuz/chromium` on Vercel. Prefer **Pro** (or higher) with **≥120s** function duration and **≥1024 MB** memory so “CV + letter” runs don’t time out. Hobby’s 60 s limit may fail on **Generate both**.
+
 ## 4) Smoke checklist
 
 - `/auth` loads and allows sign-up/sign-in.
@@ -43,6 +46,7 @@ Set these in Vercel Project Settings -> Environment Variables:
 - Chat route (`/api/chat/stream`) returns model output.
 - Resume coach route (`/api/resume-context/apply`) works with `OPENAI_API_KEY`.
 - Applications/profile/reports/scan APIs return only authenticated user data.
+- Run an evaluation once: Tracker should show a new row; tailored doc generation should create a row under **Documents** (Markdown drafts) after the stream finishes.
 
 ## 5) Security notes
 

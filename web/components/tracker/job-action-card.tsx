@@ -48,11 +48,18 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
     setBumpKey((k) => k + 1);
   };
 
-  const onDone = () => {
+  const onDone = (_fullText: string, exitCode: number) => {
     setPending(null);
-    toast.success("Document generation complete.");
+    if (exitCode !== 0) {
+      toast.error(
+        "Generation failed or stopped early — scroll the stream for details.",
+      );
+      return;
+    }
+    toast.success("Tailored PDFs saved — check Documents & tracker downloads.");
     router.refresh();
   };
+
   const onError = (msg: string) => {
     setPending(null);
     toast.error(`Generation failed: ${msg}`);
@@ -258,9 +265,11 @@ export function JobActionCard({ row, cursorModel }: JobActionCardProps) {
           key={`${row.num}-${pending.kind}-${pending.regenerate}-${bumpKey}`}
           url="/api/docs/generate"
           body={{
+            applicationNum: row.num,
             kind: pending.kind,
             company: row.company,
             role: row.role,
+            reportNum: row.reportNum || undefined,
             reportRel: row.reportPath || undefined,
             regenerate: pending.regenerate,
             canonicalStatus: row.status,

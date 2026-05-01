@@ -16,8 +16,8 @@ interface RecentSearchesProps {
 }
 
 /**
- * Last few saved job-search results (portal ATS or assistant jobs-json) —
- * cached so you can re-open or replay without hitting the agent again.
+ * Last few saved job-search results (LinkedIn guest API or assistant jobs-json)
+ * — cached so you can re-open or replay without repeating the fetch.
  * Separate from chat transcript persistence (stored under a different localStorage key).
  */
 export function RecentSearches({
@@ -36,7 +36,7 @@ export function RecentSearches({
             Recent job searches
           </h3>
           <p className="text-[11px] text-muted-foreground mt-1 pr-12">
-            Up to four saved searches with job rows (portal search or assistant).
+            Up to four saved searches with job rows (LinkedIn search or assistant).
             Not the same as your chat transcript.
           </p>
         </div>

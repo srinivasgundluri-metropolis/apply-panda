@@ -73,7 +73,10 @@ ${jdText.slice(0, 24000)}
         `${displayMarkdown}\n\n---\n✅ Saved to tracker and reports as #${num} (refresh Tracker / Dashboard).`,
       );
     } catch (persistErr) {
-      const msg = (persistErr as Error).message || "persist failed";
+      const msg =
+        persistErr instanceof Error
+          ? persistErr.message
+          : String(persistErr);
       return sseFromText(
         `${displayMarkdown}\n\n---\n⚠️ Evaluation finished but could not save to your account: ${msg}`,
         1,

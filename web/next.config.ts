@@ -7,6 +7,8 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: resolve(__dirname),
   },
+  // Headless Chromium (PDF) — avoid bundling issues on serverless bundles.
+  serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium"],
 };
 
 export default nextConfig;

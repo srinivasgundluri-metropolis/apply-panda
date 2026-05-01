@@ -13,17 +13,18 @@ import { JobActions } from "@/components/chat/job-actions";
 import { RecentSearches } from "@/components/chat/recent-searches";
 import { SseStream } from "@/components/sse-stream";
 import { extractJobsBlock } from "@/lib/jobs-block";
-import { HOSTED_SCAN_MATCH_LIMIT } from "@/lib/portal-scan";
 import { cn } from "@/lib/utils";
 import type {
+  LinkedInResponse,
   LinkedInResult,
-  PortalSearchResponse,
   RecentSearch,
   SseEvent,
 } from "@/lib/types";
 
 interface ChatPanelProps {
   candidateFirst: string;
+  /** Passed from profile—optional LinkedIn location parameter for guest search. */
+  profileLocationHint?: string;
 }
 
 interface ChatMessage {
@@ -41,10 +42,11 @@ const RECENT_KEY = "career-ops:recent-searches";
 const HISTORY_KEY = "career-ops:chat-history";
 
 const SUGGESTED_PROMPTS = [
-  "machine learning platform senior",
-  "backend engineer distributed systems",
-  "What's in my scan history under 'AI' last 14 days?",
-  "Summarize my last 3 evaluation reports",
+  "LinkedIn search: senior machine learning engineer remote",
+  "Find staff backend roles in London on LinkedIn",
+  "Given my profile, suggest a sharper LinkedIn About section (3 short paragraphs)",
+  "Which roles in my tracker are still Evaluated vs Applied — what should I do next?",
+  "Compare my profile target_roles to these LinkedIn postings I care about…",
 ];
 
 /** Short label on chip; full text sent to `/api/resume-context/apply`. */
@@ -98,49 +100,33 @@ function escapeTableCell(s: string): string {
   return s.replace(/\|/g, "·").replace(/\n/g, " ").trim();
 }
 
-function buildPortalSearchReply(data: PortalSearchResponse): {
+function formatInlineCode(s: string): string {
+  const t = s.trim() || "—";
+  return `\`${t.replace(/`/g, "'")}\``;
+}
+
+function buildLinkedInSearchReply(data: LinkedInResponse): {
   content: string;
   jobs: LinkedInResult[];
 } {
-  const pos = data.title_filter.positive.length
-    ? data.title_filter.positive.map((x) => `\`${x}\``).join(", ")
-    : "_none (all titles allowed)_";
-  const neg = data.title_filter.negative.length
-    ? data.title_filter.negative.map((x) => `\`${x}\``).join(", ")
-    : "_none_";
-  const lfPos = data.location_filter?.positive?.length
-    ? data.location_filter!.positive.map((x) => `\`${x}\``).join(", ")
-    : "_none (all locations)_";
-  const lfNeg = data.location_filter?.negative?.length
-    ? data.location_filter!.negative.map((x) => `\`${x}\``).join(", ")
-    : "_none_";
-  const kw = data.query.keywords.trim();
-  const cf = data.query.company_filter?.trim();
+  const q = data.query;
+  const remoteNote = q.remote ? "**Remote-only filter:** on.\n\n" : "";
   const lines: string[] = [
-    "**Job board search** (Greenhouse · Ashby · Lever · Workday) — profile **title** and **location** rules apply before listing.",
+    "**LinkedIn Jobs** (guest search API — postings open in `linkedin.com/jobs/view/…`; use only for your own job search and respect LinkedIn’s terms).",
     "",
-    ...(cf?.length
-      ? [
-          `**Employer/board filter:** _${cf.replace(/_/g, "\\_")}_ — only boards in our catalog whose name contains this substring are queried.`,
-          "",
-        ]
-      : []),
-    `**Title rules:** positive ${pos} · negative ${neg}.`,
+    remoteNote + "**Query sent:**",
+    `- Keywords: ${formatInlineCode(q.keywords)}`,
+    `- Location parameter: ${formatInlineCode(q.location)}`,
+    `- Time filter: \`${q.time_range}\` · Limit: ${q.limit}`,
     "",
-    `**Location rules:** ` + `(job location field) · positive ${lfPos} · negative ${lfNeg}.`,
-    "",
-    kw
-      ? `**Keyword narrow:** _${kw.replace(/_/g, "\\_")}_ — each token (3+ characters) must appear **as a whole word in the job title** (role); this step ignores company names but still runs after profile title/location filters.`
-      : `_No keyword narrow — showing up to **${Math.min(data.query.limit, HOSTED_SCAN_MATCH_LIMIT)}** newest-matching roles (profile filters first). Cap is ${HOSTED_SCAN_MATCH_LIMIT} per search._`,
-    "",
-    `**Stats:** ${data.companies_scanned} boards queried · **${data.stats.title_filtered_total}** matches after profile filters (ranked newest-first when ATS dates exist) · **${data.stats.keyword_matched_total}** after keywords · **${data.stats.returned}** returned.`,
+    `**Fetched:** ${data.results.length} row(s). (_LinkedIn often paginates guest results—these are the first postings we could retrieve.)_`,
   ];
   const jobs = data.results;
   if (jobs.length === 0) {
     return {
       content:
         lines.join("\n") +
-        "\n\n_No matches. Try different keywords, or widen title/location rules under **Profile → Scan targeting**._",
+        "\n\n_No postings returned. Broaden keywords, try another location phrase, toggle **LinkedIn search first** off and ask for strategy—or run an ATS scan from **Pipeline → Run scan**._",
       jobs: [],
     };
   }
@@ -191,7 +177,10 @@ async function readErrorMessage(res: Response): Promise<string> {
   }
 }
 
-export function ChatPanel({ candidateFirst }: ChatPanelProps) {
+export function ChatPanel({
+  candidateFirst,
+  profileLocationHint,
+}: ChatPanelProps) {
   const [history, setHistory] = React.useState<ChatMessage[]>([]);
   const [recent, setRecent] = React.useState<RecentSearch[]>([]);
   const [input, setInput] = React.useState("");
@@ -207,8 +196,8 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     null,
   );
   const [evalKey, setEvalKey] = React.useState(0);
-  const [portalSearchFirst, setPortalSearchFirst] = React.useState(true);
-  const [portalSearching, setPortalSearching] = React.useState(false);
+  const [linkedInSearchFirst, setLinkedInSearchFirst] = React.useState(true);
+  const [linkedInSearching, setLinkedInSearching] = React.useState(false);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   // Without this guard, the first persist effect ran while `history` was still
   // empty (before hydrate completed), overwriting localStorage — wiping chat.
@@ -279,7 +268,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     const resumeFile = coachResumeFile;
 
     if (!uploadedResumeMarkdown && !textNote) return;
-    if (resumeCoachLoading || streaming || portalSearching) return;
+    if (resumeCoachLoading || streaming || linkedInSearching) return;
 
     const uploadingPdf = uploadedResumeMarkdown.length > 0;
     const resumeName = resumeFile?.name ?? "uploaded-resume";
@@ -353,7 +342,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
   };
 
   const uploadResumeFile = async (file: File) => {
-    if (resumeCoachLoading || streaming || portalSearching) return;
+    if (resumeCoachLoading || streaming || linkedInSearching) return;
     setResumeCoachLoading(true);
     setCoachProgressHint("Converting resume file to markdown…");
     try {
@@ -380,7 +369,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     }
   };
 
-  const runPortalJobSearch = async (message: string) => {
+  const runLinkedInJobSearch = async (message: string) => {
     const userMsg: ChatMessage = {
       role: "user",
       content: message,
@@ -389,16 +378,23 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     const assistantId = makeId();
     setHistory((prev) => [...prev, userMsg]);
     setInput("");
-    setPortalSearching(true);
+    setLinkedInSearching(true);
     try {
-      const res = await fetch("/api/portals/search", {
+      const res = await fetch("/api/linkedin/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keywords: message, limit: 60 }),
+        body: JSON.stringify({
+          keywords: message,
+          limit: 25,
+          ...(profileLocationHint
+            ? { location: profileLocationHint }
+            : {}),
+          timeRange: "any",
+        }),
       });
-      const data = (await res.json()) as PortalSearchResponse & { error?: string };
+      const data = (await res.json()) as LinkedInResponse & { error?: string };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      const { content, jobs } = buildPortalSearchReply(data);
+      const { content, jobs } = buildLinkedInSearchReply(data);
       setHistory((prev) => [
         ...prev,
         {
@@ -410,26 +406,26 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
       ]);
       if (jobs.length > 0) trackRecent(message, jobs);
     } catch (e) {
-      toast.error(`Portal search failed: ${(e as Error).message}`);
+      toast.error(`LinkedIn search failed: ${(e as Error).message}`);
       setHistory((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: `_Portal search failed: ${(e as Error).message}_`,
+          content: `_LinkedIn search failed: ${(e as Error).message}_`,
           id: assistantId,
         },
       ]);
     } finally {
-      setPortalSearching(false);
+      setLinkedInSearching(false);
     }
   };
 
   const sendMessage = async (rawText: string) => {
     const message = rawText.trim();
-    if (!message || streaming || resumeCoachLoading || portalSearching) return;
+    if (!message || streaming || resumeCoachLoading || linkedInSearching) return;
 
-    if (!resumeCoachMode && portalSearchFirst) {
-      await runPortalJobSearch(message);
+    if (!resumeCoachMode && linkedInSearchFirst) {
+      await runLinkedInJobSearch(message);
       return;
     }
 
@@ -558,7 +554,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     saveRecent([]);
   };
 
-  const busy = streaming || resumeCoachLoading || portalSearching;
+  const busy = streaming || resumeCoachLoading || linkedInSearching;
   const empty = history.length === 0 && !busy;
 
   const recentUserPrompts = React.useMemo(() => {
@@ -631,12 +627,12 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               <div>
                 <p className="font-semibold">
                   Hi{candidateFirst ? `, ${candidateFirst}` : ""} — what would
-                  you like to find?
+                  you like to work on?
                 </p>
                 <p className="text-sm text-muted-foreground max-w-md mt-1">
                   {resumeCoachMode
                     ? "Describe changes, upload a résumé file (`.docx/.md/.txt`) for conversion, or both — the coach merges into your workspace using your configured model."
-                    : "With **Search job boards** on, your message queries Greenhouse, Ashby, Lever, and Workday (where configured) using the companies and title filters from your profile, then optional keywords — real posting URLs only. Turn it off for tracker, reports, or general chat."}
+                    : "With **LinkedIn search first** on, Send runs the guest Jobs API against your keywords (optional location from Profile). Results are real URLs you can ⚡ Evaluate. Turn it off to chat about tracker, reports, negotiation, headline/About drafts, or how your profile/targeting fits openings—still grounded in **your saved data**."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 justify-center max-w-2xl mt-2">
@@ -692,10 +688,12 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               onEvaluate={handleEvaluate}
               live
             />
-          ) : streaming || portalSearching ? (
+          ) : streaming || linkedInSearching ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              <span>{portalSearching ? "Searching job boards…" : "thinking…"}</span>
+              <span>
+                {linkedInSearching ? "Searching LinkedIn…" : "thinking…"}
+              </span>
             </div>
           ) : null}
         </div>
@@ -716,7 +714,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               — update <code className="text-[10px]">cv.md</code>,{" "}
               <code className="text-[10px]">profile.yml</code>,{" "}
               <code className="text-[10px]">cover-letter-base.md</code>{" "}
-              (requires <code className="text-[10px]">OPENAI_API_KEY</code> in environment). Turn this on <em>instead of</em> job search.
+              (requires <code className="text-[10px]">OPENAI_API_KEY</code> in environment). Turn this on <em>instead of</em> LinkedIn / strategy chat.
             </span>
           </label>
           {!resumeCoachMode ? (
@@ -724,14 +722,28 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               <input
                 type="checkbox"
                 className="mt-1 size-4 rounded border-input shrink-0"
-                checked={portalSearchFirst}
-                onChange={(e) => setPortalSearchFirst(e.target.checked)}
+                checked={linkedInSearchFirst}
+                onChange={(e) => setLinkedInSearchFirst(e.target.checked)}
                 disabled={busy}
               />
               <span className="text-xs text-muted-foreground leading-snug">
-                <span className="font-medium text-foreground">Search job boards first</span> —{" "}
-                Greenhouse, Ashby, Lever, and Workday using your profile board list and title filters, then optional
-                keywords. Off = plain AI chat (tracker, reports, strategy).
+                <span className="font-medium text-foreground">
+                  LinkedIn search first
+                </span>{" "}
+                — guest Jobs API using your box text as keywords
+                {profileLocationHint ? (
+                  <>
+                    {" "}
+                    and your Profile location (
+                    <span className="font-mono text-[10px]">
+                      {profileLocationHint.length > 40
+                        ? `${profileLocationHint.slice(0, 38)}…`
+                        : profileLocationHint}
+                    </span>
+                    )
+                  </>
+                ) : null}
+                . Off = chat only (summaries of tracker/reports, LinkedIn headline ideas, negotiating, etc.).
               </span>
             </label>
           ) : null}
@@ -807,9 +819,9 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               placeholder={
                 resumeCoachMode
                   ? "e.g. Instructions to merge into your uploaded resume import, or type-only edits (Skills, headline…)"
-                  : portalSearchFirst
-                    ? "Keywords to narrow ATS results (e.g. staff engineer ML remote)…"
-                    : "Ask about tracker, reports, negotiation, or paste a JD…"
+                  : linkedInSearchFirst
+                    ? "LinkedIn keywords e.g. staff ML platform engineer remote — or add a city/country…"
+                    : "Ask about your tracker/reports, profile fit, LinkedIn About/headline, negotiation…"
               }
               value={input}
               onChange={(e) => setInput(e.target.value)}

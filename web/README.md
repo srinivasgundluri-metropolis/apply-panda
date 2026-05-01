@@ -27,6 +27,8 @@ OPENAI_API_KEY=...
 OPENAI_MODEL=gpt-4.1-mini
 OPENAI_FALLBACK_MODELS="gpt-4.1-mini"
 APPLYPANDA_ALLOWED_EMAILS="user1@example.com,user2@example.com,user3@example.com,user4@example.com"
+# Tailored PDF rendering (local dev): optional path to Chrome/Chromium if not in the default macOS/Windows/Linux locations
+# PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ```
 
 ## Hosted deployment (Vercel)
@@ -44,6 +46,7 @@ See: `docs/VERCEL_SAAS_SETUP.md`
 Baseline schema lives in:
 
 - `web/supabase/schema.sql`
+- `web/supabase/storage-documents-policies.sql` (run after creating the `documents` bucket)
 
 Core tables:
 
@@ -60,7 +63,8 @@ All tables are user-scoped with Supabase RLS.
 
 - `POST /api/chat/stream` -> LLM SSE chat
 - `POST /api/eval/stream` -> LLM SSE evaluation output
-- `POST /api/docs/generate` -> LLM SSE CV/CL generation output
+- `POST /api/docs/generate` -> HTML via Gemini + headless Chrome PDFs to Storage; updates `applications` + `documents`
+- `POST /api/docs/persist-artifact` -> optional Markdown-only save (legacy)
 - `POST /api/resume-context/apply` -> LLM profile/resume coach
 - `GET/PUT /api/profile` -> `profiles`
 - `GET/PUT /api/cv` -> `resumes`

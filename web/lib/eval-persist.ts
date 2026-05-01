@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { formatPostgrestError } from "@/lib/supabase-error";
 
 /** Machine-readable footer block expected from `/api/eval/stream` prompts. */
 const META_BLOCK_RE = /<<<EVAL_META\s*\r?\n([\s\S]*?)\r?\n>>>/;
@@ -171,8 +172,8 @@ export async function allocateNextTrackerNum(params: {
       supabase.from("reports").select("num").eq("user_id", userId),
       supabase.from("applications").select("num").eq("user_id", userId),
     ]);
-  if (e1) throw e1;
-  if (e2) throw e2;
+  if (e1) throw new Error(formatPostgrestError(e1));
+  if (e2) throw new Error(formatPostgrestError(e2));
   let max = 0;
   for (const row of [...(repRows ?? []), ...(appRows ?? [])]) {
     const n = parseInt(String((row as { num?: string }).num ?? ""), 10);
@@ -220,7 +221,7 @@ export async function persistEvalToSupabase(params: {
   };
 
   const { error: er } = await supabase.from("reports").insert(reportRow);
-  if (er) throw er;
+  if (er) throw new Error(formatPostgrestError(er));
 
   const appRow = {
     user_id: userId,
@@ -240,15 +241,21 @@ export async function persistEvalToSupabase(params: {
   const { error: ea } = await supabase.from("applications").insert(appRow);
   if (ea) {
     await supabase.from("reports").delete().eq("user_id", userId).eq("num", num);
-    throw ea;
+    throw new Error(formatPostgrestError(ea));
   }
 
   if (params.sourceUrl?.trim()) {
-    await supabase
+    const { error: shErr } = await supabase
       .from("scan_history")
       .update({ status: "Evaluated", updated_at: now.toISOString() })
       .eq("user_id", userId)
       .eq("url", params.sourceUrl.trim());
+    if (shErr) {
+      console.warn(
+        "[eval-persist] scan_history status not updated:",
+        formatPostgrestError(shErr),
+      );
+    }
   }
 
   return { num };

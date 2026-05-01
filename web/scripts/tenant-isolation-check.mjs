@@ -18,6 +18,7 @@ const requiredApiFiles = [
   'app/api/chat/stream/route.ts',
   'app/api/eval/stream/route.ts',
   'app/api/docs/generate/route.ts',
+  'app/api/docs/persist-artifact/route.ts',
   'app/api/resume-context/apply/route.ts',
   'app/api/scan/run/route.ts',
   'app/api/jd/route.ts',

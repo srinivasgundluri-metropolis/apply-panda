@@ -109,3 +109,6 @@ create policy reports_owner_all on public.reports
 drop policy if exists documents_owner_all on public.documents;
 create policy documents_owner_all on public.documents
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Storage: after creating the private bucket `documents`, run
+-- `storage-documents-policies.sql` so uploads (tailored draft markdown) succeed.

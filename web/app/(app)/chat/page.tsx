@@ -12,10 +12,15 @@ export default async function ChatPage() {
     <>
       <PageHeader
         title="AI Chat"
-        description="Talk to ApplyPanda. It can search LinkedIn, query your local data, and trigger inline evaluations — without ever editing your files unless you ask."
+        description="Ask about jobs on LinkedIn (guest search), your tracker and reports, or your profile—with optional résumé coach to persist edits. Inline evaluation runs when jobs are listed."
       />
       <div className="px-8 py-6 flex-1 min-h-0 flex flex-col">
-        <ChatPanel candidateFirst={first} />
+        <ChatPanel
+          candidateFirst={first}
+          profileLocationHint={
+            profile.candidate?.location?.trim() || undefined
+          }
+        />
       </div>
     </>
   );

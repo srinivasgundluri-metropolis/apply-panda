@@ -166,6 +166,15 @@ export function ProfileResumeEditor({
     e?.preventDefault();
     setSaving(true);
     try {
+      const linkedinValue = linkedin.trim();
+      if (!linkedinValue) {
+        toast.error("LinkedIn URL is required.");
+        return;
+      }
+      if (!/^https?:\/\/(www\.)?linkedin\.com\/.+/i.test(linkedinValue)) {
+        toast.error("LinkedIn URL must be a full https://linkedin.com/... link.");
+        return;
+      }
       const payload: Profile = {
         candidate: {
           full_name: fullName.trim() || undefined,
@@ -173,7 +182,7 @@ export function ProfileResumeEditor({
           phone: phone.trim() || undefined,
           location: location.trim() || undefined,
           timezone: timezone.trim() || undefined,
-          linkedin: linkedin.trim() || undefined,
+          linkedin: linkedinValue,
           github: github.trim() || undefined,
           website: website.trim() || undefined,
         },
@@ -327,6 +336,8 @@ export function ProfileResumeEditor({
                   id="linkedin"
                   value={linkedin}
                   onChange={setLinkedin}
+                  required
+                  placeholder="https://linkedin.com/in/your-handle"
                 />
                 <Field
                   label="GitHub URL"
@@ -546,6 +557,7 @@ function Field({
   onChange,
   type = "text",
   placeholder,
+  required = false,
 }: {
   label: string;
   id: string;
@@ -553,6 +565,7 @@ function Field({
   onChange: (v: string) => void;
   type?: string;
   placeholder?: string;
+  required?: boolean;
 }) {
   return (
     <div className="grid gap-1.5">
@@ -563,6 +576,7 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        required={required}
       />
     </div>
   );

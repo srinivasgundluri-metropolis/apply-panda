@@ -131,6 +131,56 @@ function tailoringRetrySuffix(args: {
   return `\n\nRETRY INSTRUCTION (${flavor}):\n- The previous draft was too close to SOURCE_CV wording.\n- Rewrite to be truly tailored for ${args.role} at ${args.company}.\n- Keep facts identical, but reframe bullets around the role requirements from REPORT / JOB CONTEXT.\n- Do NOT copy bullet sentences verbatim from SOURCE_CV.\n- Reorder sections and bullets by relevance to this role.\n- Make the fit explicit in wording (tools, domain, outcomes) without inventing anything.`;
 }
 
+function isLikelyHttpUrl(s: string): boolean {
+  return /^https?:\/\/\S+$/i.test(s.trim());
+}
+
+function extractLinkedinFromProfileData(raw: unknown): string | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  const candidate =
+    obj.candidate && typeof obj.candidate === "object" && !Array.isArray(obj.candidate)
+      ? (obj.candidate as Record<string, unknown>)
+      : null;
+
+  const maybe =
+    (typeof candidate?.linkedin === "string" ? candidate.linkedin : null) ??
+    (typeof obj.linkedin === "string" ? obj.linkedin : null);
+  if (!maybe) return null;
+  const v = maybe.trim();
+  if (!v) return null;
+  if (isLikelyHttpUrl(v)) return v;
+  if (/^linkedin\.com\//i.test(v) || /^www\.linkedin\.com\//i.test(v)) {
+    return `https://${v.replace(/^https?:\/\//i, "")}`;
+  }
+  return null;
+}
+
+/**
+ * If model outputs just "LinkedIn" label in header, substitute full URL from profile.
+ * This keeps rendered docs actionable even when markdown->HTML conversion dropped anchor hrefs.
+ */
+function enforceLinkedinUrlInHtml(html: string, linkedinUrl: string | null): string {
+  if (!linkedinUrl) return html;
+  const hasLinkedinUrl = /https?:\/\/(?:www\.)?linkedin\.com\/[^\s<)"]+/i.test(html);
+  if (hasLinkedinUrl) return html;
+
+  const headerWindow = Math.min(2200, html.length);
+  const head = html.slice(0, headerWindow);
+  const tail = html.slice(headerWindow);
+
+  const replaced = head
+    .replace(
+      /\|\s*LinkedIn\s*(?=\||<|\n|$)/i,
+      `| <a href="${linkedinUrl}">${linkedinUrl}</a>`,
+    )
+    .replace(
+      /\bLinkedIn\b(?![^<]*<\/a>)/i,
+      `<a href="${linkedinUrl}">${linkedinUrl}</a>`,
+    );
+  return replaced + tail;
+}
+
 async function runHtmlModel(prompt: string, model: string): Promise<string> {
   return runGeminiPromptWithConfig(prompt, model, {
     temperature: 0.25,
@@ -218,6 +268,7 @@ export async function POST(req: NextRequest) {
   const profileYaml = yamlStringify((prof?.data ?? {}) as object, {
     lineWidth: 100,
   }).slice(0, 12_000);
+  const fallbackLinkedinUrl = extractLinkedinFromProfileData(prof?.data);
 
   let reportNum = (body.reportNum ?? "").trim();
   if (!reportNum && body.reportRel) {
@@ -363,6 +414,7 @@ export async function POST(req: NextRequest) {
         const retryHtml = extractHostedHtmlBlock(retryText);
         if (retryHtml) atsHtml = retryHtml;
       }
+      atsHtml = enforceLinkedinUrlInHtml(atsHtml, fallbackLinkedinUrl);
 
       log.push("→ Generating full CV HTML (model, one-page layout)…");
       const fullPrompt = buildHostedFullHtmlPrompt(ctx);
@@ -387,6 +439,7 @@ export async function POST(req: NextRequest) {
         const retryHtml = extractHostedHtmlBlock(retryText);
         if (retryHtml) fullHtml = retryHtml;
       }
+      fullHtml = enforceLinkedinUrlInHtml(fullHtml, fallbackLinkedinUrl);
 
       atsStorage = await saveTailored({
         html: atsHtml,
@@ -445,6 +498,7 @@ export async function POST(req: NextRequest) {
         const retryHtml = extractHostedHtmlBlock(retryText);
         if (retryHtml) clHtml = retryHtml;
       }
+      clHtml = enforceLinkedinUrlInHtml(clHtml, fallbackLinkedinUrl);
 
       clStorage = await saveTailored({
         html: clHtml,

@@ -37,6 +37,9 @@ const HTML_RULES = `HTML requirements (all documents):
 - Letter paper, print-friendly black-on-white (no emoji, no remote assets).
 - No scripts; no decorative graphics or charts.
 - Use semantic markup; keep content honest — only facts from SOURCE_CV and REPORT.
+- Contact links must be real URLs: never print bare label text like "LinkedIn" by itself.
+  - If LinkedIn/GitHub/website is shown, include the full absolute URL text (e.g., \`https://linkedin.com/in/...\`).
+  - If using anchors, \`href\` must be absolute \`https://...\` and visible text should still be the full URL.
 ${ONE_PAGE_RULE}
 - Match the user's provided template style: clean, text-forward, no decorative elements, no icons.
 - Tailoring is mandatory: do not paste SOURCE_CV verbatim. Rewrite and reorder for this specific role/company.
@@ -95,6 +98,7 @@ Tailoring rules (strict):
 - Rewrite bullet wording to align with job requirements/keywords from REPORT.
 - Keep facts true but express role-fit explicitly (stack, domain, outcomes).
 - Avoid copy/paste bullet sentences from SOURCE_CV.
+- In the contact header, print full URLs for LinkedIn/GitHub/website (no placeholder labels).
 
 Output exactly ONE block in this form (nothing before or after the tags):
 <<<HOSTED_HTML>>>
@@ -129,6 +133,7 @@ Tailoring rules (strict):
 - Re-rank bullets by relevance to this role.
 - Rewrite language to show role/company fit while keeping facts unchanged.
 - Avoid copy/paste bullet sentences from SOURCE_CV.
+- In the contact header, print full URLs for LinkedIn/GitHub/website (no placeholder labels).
 
 Output exactly ONE block:
 <<<HOSTED_HTML>>>
@@ -160,6 +165,7 @@ ${trimContext(ctx.reportExcerpt, 10_000)}
 Write 3 short paragraphs plus a brief closing — must stay on **one** printed page.
 Make it specific to this job/company (mirror role themes from REPORT), and avoid generic/template phrasing.
 Do not invent achievements.
+If mentioning LinkedIn (or any profile link), include the full absolute URL text.
 
 Output exactly ONE block:
 <<<HOSTED_HTML>>>

@@ -9,13 +9,19 @@ import { resolve } from "node:path";
  */
 const webRoot = resolve(__dirname);
 const repoRoot = resolve(__dirname, "..");
-const onVercel = Boolean(process.env.VERCEL);
+/**
+ * Remote Vercel Git builds expose system env (`VERCEL_DEPLOYMENT_ID`, etc.).
+ * Local `vercel build` sets `VERCEL` but disables those vars — combining a repo-root
+ * `outputFileTracingRoot` with the CLI shim then resolves `web/web/.next`, ENOENT after build.
+ */
+const onRemoteVercelBuild =
+  Boolean(process.env.VERCEL?.trim()) && Boolean(process.env.VERCEL_DEPLOYMENT_ID?.trim());
 
 const nextConfig: NextConfig = {
   turbopack: {
-    root: onVercel ? repoRoot : webRoot,
+    root: onRemoteVercelBuild ? repoRoot : webRoot,
   },
-  ...(onVercel ? { outputFileTracingRoot: repoRoot } : {}),
+  ...(onRemoteVercelBuild ? { outputFileTracingRoot: repoRoot } : {}),
   // Headless Chromium (PDF) — avoid bundling issues on serverless bundles.
   serverExternalPackages: [
     "puppeteer-core",

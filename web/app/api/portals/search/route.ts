@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiUser } from "@/lib/supabase/api";
-import { searchPortalJobsWithFilters } from "@/lib/portal-scan";
+import {
+  loadPortalsConfigResolved,
+  searchPortalJobsWithFilters,
+  UserPortalsConfigMissingError,
+} from "@/lib/portal-scan";
 import type { LinkedInResult, PortalSearchResponse } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +26,7 @@ function toResults(jobs: Array<{ url: string; title: string; company: string; lo
 }
 
 /**
- * Live portal job search — titles filtered by portals.yml rules, optional keywords narrow company/title/location.
+ * Live portal job search — titles filtered by per-user `profiles.data.portals` only; optional keywords narrow job titles.
  * Read-only (does not write scan_history).
  */
 export async function POST(req: NextRequest) {
@@ -40,8 +44,9 @@ export async function POST(req: NextRequest) {
   const limit = Math.min(200, Math.max(1, Number(body.limit) || 60));
 
   try {
+    const cfg = await loadPortalsConfigResolved(auth.supabase, auth.user.id);
     const { config, companiesScanned, jobs, titleFilteredTotal, keywordMatchedTotal } =
-      await searchPortalJobsWithFilters(keywords, limit);
+      await searchPortalJobsWithFilters(cfg, keywords, limit);
     const tf = config.title_filter ?? {};
     const payload: PortalSearchResponse = {
       query: { keywords, limit },
@@ -59,6 +64,9 @@ export async function POST(req: NextRequest) {
     };
     return NextResponse.json(payload);
   } catch (e) {
+    if (e instanceof UserPortalsConfigMissingError) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
+    }
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }

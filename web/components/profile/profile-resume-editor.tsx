@@ -32,7 +32,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import type { Profile } from "@/lib/types";
+import type { PortalsYamlConfig, Profile } from "@/lib/types";
 
 interface Props {
   initial: Profile;
@@ -109,6 +109,14 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
     (initial.narrative?.deal_breakers ?? []).join("\n"),
   );
 
+  const [portalsJson, setPortalsJson] = React.useState(() => {
+    const p = initial.portals;
+    if (p && typeof p === "object") {
+      return JSON.stringify(p, null, 2);
+    }
+    return "";
+  });
+
   const [cvMarkdown, setCvMarkdown] = React.useState(initialCvMarkdown);
 
   const splitList = (s: string): string[] =>
@@ -164,6 +172,29 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
         },
       };
 
+      if (portalsJson.trim() === "") {
+        if (initial.portals) {
+          payload.portals = null;
+        }
+      } else {
+        try {
+          const parsed = JSON.parse(portalsJson) as PortalsYamlConfig;
+          if (
+            !Array.isArray(parsed.tracked_companies) ||
+            parsed.tracked_companies.length === 0
+          ) {
+            throw new Error("`tracked_companies` must be a non-empty array.");
+          }
+          payload.portals = parsed;
+        } catch (err) {
+          toast.error(
+            `Portals JSON invalid: ${(err as Error).message}. Fix the Portals tab or clear the field.`,
+          );
+          setSaving(false);
+          return;
+        }
+      }
+
       const [resProfile, resCv] = await Promise.all([
         fetch("/api/profile", {
           method: "PUT",
@@ -177,16 +208,27 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
         }),
       ]);
 
+      const profileBody = (await resProfile.json().catch(() => ({}))) as {
+        profile?: Profile;
+        error?: string;
+      };
+
       if (!resProfile.ok) {
-        const j = await resProfile.json().catch(() => ({}));
-        throw new Error(j.error ?? `Profile HTTP ${resProfile.status}`);
+        throw new Error(profileBody.error ?? `Profile HTTP ${resProfile.status}`);
       }
       if (!resCv.ok) {
         const j = await resCv.json().catch(() => ({}));
-        throw new Error(j.error ?? `CV HTTP ${resCv.status}`);
+        throw new Error((j as { error?: string }).error ?? `CV HTTP ${resCv.status}`);
       }
 
-      toast.success("Profile YAML and cv.md updated.");
+      const merged = profileBody.profile;
+      if (merged?.portals && typeof merged.portals === "object") {
+        setPortalsJson(JSON.stringify(merged.portals, null, 2));
+      } else {
+        setPortalsJson("");
+      }
+
+      toast.success("Profile, optional portals config, and résumé updated.");
       router.refresh();
     } catch (err) {
       toast.error(`Save failed: ${(err as Error).message}`);
@@ -198,9 +240,10 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
   return (
     <form onSubmit={saveAll} className="flex flex-col gap-6">
       <Tabs defaultValue="resume" className="gap-4">
-        <TabsList className="w-fit">
+        <TabsList className="w-fit flex-wrap">
           <TabsTrigger value="resume">Résumé (`cv.md`)</TabsTrigger>
           <TabsTrigger value="yaml">Targeting (`profile.yml`)</TabsTrigger>
+          <TabsTrigger value="portals">Portals (`portals.yml`)</TabsTrigger>
         </TabsList>
 
         <TabsContent value="resume" className="mt-2">
@@ -357,15 +400,46 @@ export function ProfileResumeEditor({ initial, initialCvMarkdown }: Props) {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="portals" className="mt-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Portal scanner (per user)</CardTitle>
+              <CardDescription>
+                Stored in Supabase as <code className="text-xs">profiles.data.portals</code>.
+                Same JSON shape as root <code className="text-xs">portals.yml</code> (
+                <code className="text-xs">tracked_companies</code>,{" "}
+                <code className="text-xs">title_filter</code>). Chat <strong>Search portals</strong>{" "}
+                and Pipeline <strong>Run scan</strong> use only this list — there is no shared
+                default company bundle. Clear the field and save to remove saved portals (scans will
+                ask you to configure again until you paste JSON and save).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Textarea
+                value={portalsJson}
+                onChange={(e) => setPortalsJson(e.target.value)}
+                spellCheck={false}
+                className="min-h-[420px] font-mono text-xs leading-relaxed"
+                placeholder={`{
+  "title_filter": { "positive": ["Engineer"], "negative": ["Intern"] },
+  "tracked_companies": [
+    { "name": "Example", "enabled": true, "careers_url": "https://jobs.ashbyhq.com/example" }
+  ]
+}`}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       <Separator />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground max-w-lg">
-          One button writes <code>config/profile.yml</code> (deep-merge) and{" "}
-          <code>cv.md</code> next time you generate tailored ATS + Full CV PDFs from
-          the Tracker, those files are the sources of truth.
+          One button updates your Supabase profile (including optional{" "}
+          <code className="text-xs">portals</code> JSON), <code className="text-xs">cv.md</code> in
+          storage, and keeps tailored CV/cover flows aligned.
         </p>
         <Button type="submit" disabled={saving} size="lg">
           {saving ? (

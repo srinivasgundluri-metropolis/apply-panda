@@ -3,31 +3,18 @@
  * Used by hosted portal scan (persist) and chat portal search (read-only).
  */
 
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { parse as parseYaml } from "yaml";
-import { REPO_ROOT } from "@/lib/paths";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { PortalsYamlConfig } from "@/lib/types";
 
-/** Ship default boards in repo; overrides: root `portals.yml` (local), or `PORTALS_YML` (Vercel). */
-const BUNDLED_PORTALS = join(process.cwd(), "data", "bundled-portals.yml");
+const USER_PORTALS_REQUIRED_MSG =
+  "Portal scanner is not configured. Open Profile → Portals and paste JSON with a non-empty tracked_companies array (same shape as career-ops portals.yml). You can start from templates/portals.example.yml in the repo and customize companies.";
 
-async function readPortalsYamlText(): Promise<string> {
-  const fromEnv = process.env.PORTALS_YML?.trim();
-  if (fromEnv) return fromEnv;
-
-  if (existsSync(BUNDLED_PORTALS)) {
-    return readFile(BUNDLED_PORTALS, "utf-8");
+/** Thrown when `profiles.data.portals` is missing, null, or invalid for scan/search. */
+export class UserPortalsConfigMissingError extends Error {
+  constructor(message = USER_PORTALS_REQUIRED_MSG) {
+    super(message);
+    this.name = "UserPortalsConfigMissingError";
   }
-
-  const repoPortals = join(REPO_ROOT, "portals.yml");
-  if (existsSync(repoPortals)) {
-    return readFile(repoPortals, "utf-8");
-  }
-
-  throw new Error(
-    "Portals configuration missing: ship web/data/bundled-portals.yml, add portals.yml next to career-ops root for local runs, or set PORTALS_YML with the full YAML (e.g. on Vercel).",
-  );
 }
 
 export type PortalJob = {
@@ -36,11 +23,6 @@ export type PortalJob = {
   company: string;
   location: string;
   source: string;
-};
-
-export type PortalsYamlConfig = {
-  tracked_companies?: Array<{ name?: string; enabled?: boolean; api?: string; careers_url?: string }>;
-  title_filter?: { positive?: string[]; negative?: string[] };
 };
 
 const FETCH_TIMEOUT_MS = 10_000;
@@ -129,9 +111,37 @@ export function buildTitleFilter(titleFilter: { positive?: string[]; negative?: 
   };
 }
 
-export async function loadPortalsConfig(): Promise<PortalsYamlConfig> {
-  const raw = await readPortalsYamlText();
-  return parseYaml(raw) as PortalsYamlConfig;
+function isValidUserPortals(p: unknown): p is PortalsYamlConfig {
+  if (!p || typeof p !== "object" || Array.isArray(p)) return false;
+  const c = (p as PortalsYamlConfig).tracked_companies;
+  return Array.isArray(c) && c.length > 0;
+}
+
+/**
+ * Loads `profiles.data.portals` for the signed-in user only — no generic bundled defaults.
+ */
+export async function loadPortalsConfigResolved(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<PortalsYamlConfig> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("data")
+    .eq("user_id", userId)
+    .maybeSingle<{ data: Record<string, unknown> }>();
+  if (error || !data?.data) {
+    throw new UserPortalsConfigMissingError();
+  }
+  const portals = data.data.portals;
+  if (portals === null || portals === undefined) {
+    throw new UserPortalsConfigMissingError();
+  }
+  if (!isValidUserPortals(portals)) {
+    throw new UserPortalsConfigMissingError(
+      "profiles.data.portals must be an object with a non-empty tracked_companies array. Open Profile → Portals and fix the JSON.",
+    );
+  }
+  return portals;
 }
 
 function dedupeByUrl(jobs: PortalJob[]): PortalJob[] {
@@ -178,9 +188,9 @@ export interface CollectPortalJobsOpts {
 
 /** All open roles from configured boards after portals.yml title_filter (no DB). */
 export async function collectAllTitleFilteredPortalJobs(
+  cfg: PortalsYamlConfig,
   options: CollectPortalJobsOpts = {},
 ): Promise<{ config: PortalsYamlConfig; companiesScanned: number; jobs: PortalJob[] }> {
-  const cfg = await loadPortalsConfig();
   const titleFilter = buildTitleFilter(cfg.title_filter);
   const companyNeedle = (options.companyNameContains ?? "").trim().toLowerCase();
 
@@ -221,6 +231,7 @@ export async function collectAllTitleFilteredPortalJobs(
 
 /** Title filters from yaml, optional chat keywords, capped list for UI. */
 export async function searchPortalJobsWithFilters(
+  cfg: PortalsYamlConfig,
   keywords: string,
   limit: number,
 ): Promise<{
@@ -231,7 +242,7 @@ export async function searchPortalJobsWithFilters(
   keywordMatchedTotal: number;
 }> {
   const cap = Math.min(200, Math.max(1, limit));
-  const { config, companiesScanned, jobs: all } = await collectAllTitleFilteredPortalJobs();
+  const { config, companiesScanned, jobs: all } = await collectAllTitleFilteredPortalJobs(cfg);
   const narrowed = keywords.trim() ? applyKeywordNarrowing(all, keywords) : all;
   return {
     config,

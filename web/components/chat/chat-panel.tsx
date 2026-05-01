@@ -45,10 +45,28 @@ const SUGGESTED_PROMPTS = [
   "Summarize my last 3 evaluation reports",
 ];
 
-const COACH_PROMPTS = [
-  "Rewrite my Summary in cv.md to emphasize product ML and add a bullets line under Skills for Python + Torch.",
-  "Set profile.yml narrative: targeting staff+ ML roles, remote US, avoiding defense contractors.",
-  "My cover-letter base: formal, three short paragraphs, always close with willingness to relocate.",
+/** Short label on chip; full text sent to `/api/resume-context/apply`. */
+const COACH_PROMPTS: { label: string; instruction: string }[] = [
+  {
+    label: "Rewrite Summary + Skills (ML)",
+    instruction:
+      "Rewrite my Summary in cv.md to emphasize product ML and add a bullets line under Skills for Python + Torch.",
+  },
+  {
+    label: "Set targeting narrative",
+    instruction:
+      "Set profile.yml narrative: targeting staff+ ML roles, remote US, avoiding defense contractors.",
+  },
+  {
+    label: "Cover-letter voice",
+    instruction:
+      "My cover-letter base: formal, three short paragraphs, always close with willingness to relocate.",
+  },
+  {
+    label: "Sync profile from résumé",
+    instruction:
+      "Using only what is clearly supported by my current canonical résumé markdown, propose profile_updates: refresh target_roles, narrative.one_liner, narrative.proof_points, and candidate fields where they match the CV. Do not invent achievements or metrics. Return cv_md as null unless you fix obvious typos. Return cover_letter_base_md as null unless this message explicitly asks to change cover-letter preferences.",
+  },
 ];
 
 function makeId(): string {
@@ -605,21 +623,32 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 justify-center max-w-2xl mt-2">
-                {(resumeCoachMode ? COACH_PROMPTS : SUGGESTED_PROMPTS).map((p) => (
-                  <Button
-                    key={p}
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => {
-                      if (resumeCoachMode) void sendResumeCoach(p);
-                      else void sendMessage(p);
-                    }}
-                    className="text-xs"
-                  >
-                    {p}
-                  </Button>
-                ))}
+                {resumeCoachMode
+                  ? COACH_PROMPTS.map((item) => (
+                      <Button
+                        key={item.label}
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void sendResumeCoach(item.instruction)}
+                        className="text-xs max-w-[220px] text-left whitespace-normal h-auto py-2 leading-snug"
+                        title={item.instruction}
+                      >
+                        {item.label}
+                      </Button>
+                    ))
+                  : SUGGESTED_PROMPTS.map((p) => (
+                      <Button
+                        key={p}
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void sendMessage(p)}
+                        className="text-xs"
+                      >
+                        {p}
+                      </Button>
+                    ))}
               </div>
             </div>
           ) : (

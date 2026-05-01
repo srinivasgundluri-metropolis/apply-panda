@@ -1,12 +1,15 @@
 import { SSE_HEADERS } from "@/lib/shell";
 import { requireApiUser } from "@/lib/supabase/api";
-import { collectAllTitleFilteredPortalJobs } from "@/lib/portal-scan";
+import {
+  collectAllTitleFilteredPortalJobs,
+  loadPortalsConfigResolved,
+} from "@/lib/portal-scan";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Streams portal scan progress as SSE, persists new rows to scan_history.
- * Uses Greenhouse/Ashby/Lever APIs + portals.yml title_filter (same as chat portal search).
+ * Uses Greenhouse/Ashby/Lever APIs + per-user `profiles.data.portals` only (no generic bundled list).
  */
 export async function GET() {
   const auth = await requireApiUser();
@@ -26,9 +29,11 @@ export async function GET() {
       };
       (async () => {
         try {
-          send("stdout", "Fetching ATS boards from portals.yml…");
+          send("stdout", "Loading portal configuration…");
+          const cfg = await loadPortalsConfigResolved(auth.supabase, auth.user.id);
+          send("stdout", "Fetching ATS boards…");
           const { jobs: candidates, companiesScanned } =
-            await collectAllTitleFilteredPortalJobs();
+            await collectAllTitleFilteredPortalJobs(cfg);
           send("stdout", `Boards queried: ${companiesScanned} · listings after title filter: ${candidates.length}`);
 
           const { data: existingRows, error: existingErr } = await auth.supabase

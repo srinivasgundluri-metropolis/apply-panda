@@ -150,6 +150,19 @@ export interface AddToScanResult {
   error?: string | null;
 }
 
+/** Same shape as root `portals.yml` — stored per user in `profiles.data.portals`. */
+export interface PortalsTrackedCompany {
+  name?: string;
+  enabled?: boolean;
+  api?: string;
+  careers_url?: string;
+}
+
+export interface PortalsYamlConfig {
+  tracked_companies?: PortalsTrackedCompany[];
+  title_filter?: { positive?: string[]; negative?: string[] };
+}
+
 /** Profile schema — mirrors `config/profile.yml`, all fields optional. */
 export interface ProfileCandidate {
   full_name?: string;
@@ -185,6 +198,8 @@ export interface Profile {
   narrative?: ProfileNarrative;
   language?: ProfileLanguage;
   comp_targets?: Record<string, unknown>;
+  /** Per-user portal scanner config; `null` clears it (scan/search require valid JSON saved again). */
+  portals?: PortalsYamlConfig | null;
   [key: string]: unknown;
 }
 

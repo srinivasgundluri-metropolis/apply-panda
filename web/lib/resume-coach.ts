@@ -91,7 +91,70 @@ function sanitizeProfilePatch(p: unknown): Record<string, unknown> | null {
     const k = normalizeTopLevelProfileKey(rawK);
     if (PROFILE_KEYS.has(k)) out[k] = v;
   }
+  normalizeNarrativeArraysInPatch(out);
   return Object.keys(out).length ? out : null;
+}
+
+function splitMaybeMultiPointLine(line: string, allowCommaHeuristic: boolean): string[] {
+  const base = line.trim();
+  if (!base) return [];
+  const semis = base.split(/\s*;\s*/).map((x) => x.trim()).filter(Boolean);
+  if (semis.length > 1) return semis;
+  if (!allowCommaHeuristic) return [base];
+
+  /**
+   * If a single line is very long and has multiple comma clauses, it is usually
+   * several points packed into one sentence. Split conservatively.
+   */
+  const commaCount = (base.match(/,/g) ?? []).length;
+  if (base.length >= 110 && commaCount >= 2) {
+    return base
+      .split(/\s*,\s*/)
+      .map((x) => x.trim())
+      .filter((x) => x.length >= 8);
+  }
+  return [base];
+}
+
+function normalizeOnePerLineList(
+  input: unknown,
+  allowCommaHeuristic: boolean,
+): string[] | null {
+  const rawItems: string[] = [];
+  if (Array.isArray(input)) {
+    for (const v of input) {
+      if (typeof v === "string" && v.trim()) rawItems.push(v.trim());
+    }
+  } else if (typeof input === "string" && input.trim()) {
+    rawItems.push(input.trim());
+  } else {
+    return null;
+  }
+
+  const exploded = rawItems.flatMap((item) =>
+    item
+      .split(/\r?\n+/)
+      .map((x) => x.replace(/^[-*+]\s+/, "").replace(/^\d+\.\s+/, "").trim())
+      .filter(Boolean)
+      .flatMap((line) => splitMaybeMultiPointLine(line, allowCommaHeuristic)),
+  );
+
+  const dedup = [...new Set(exploded.map((x) => x.trim()).filter(Boolean))];
+  return dedup.length ? dedup : null;
+}
+
+function normalizeNarrativeArraysInPatch(patch: Record<string, unknown>): void {
+  const raw = patch.narrative;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+  const narrative = { ...(raw as Record<string, unknown>) };
+
+  const proof = normalizeOnePerLineList(narrative.proof_points, true);
+  if (proof) narrative.proof_points = proof;
+
+  const breakers = normalizeOnePerLineList(narrative.deal_breakers, false);
+  if (breakers) narrative.deal_breakers = breakers;
+
+  patch.narrative = narrative;
 }
 
 export function buildInstructionFromUploadedResumeExtract(
@@ -191,6 +254,7 @@ Rules:
 - \`cover_letter_base_md\`: full markdown or null.
 - \`chat_reply_md\`: concise markdown summary.
 - Do not invent achievements/metrics.
+- For \`narrative.proof_points\` and \`narrative.deal_breakers\`, return arrays with one atomic point per item (no multi-point comma-packed lines).
 
 JSON shape:
 ${COACH_JSON_SCHEMA}`;

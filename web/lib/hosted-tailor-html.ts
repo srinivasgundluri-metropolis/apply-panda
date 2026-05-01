@@ -39,6 +39,8 @@ const HTML_RULES = `HTML requirements (all documents):
 - Use semantic markup; keep content honest — only facts from SOURCE_CV and REPORT.
 ${ONE_PAGE_RULE}
 - Match the user's provided template style: clean, text-forward, no decorative elements, no icons.
+- Tailoring is mandatory: do not paste SOURCE_CV verbatim. Rewrite and reorder for this specific role/company.
+- Use REPORT / JOB CONTEXT as the job target; if REPORT is sparse, infer from role title + company context conservatively.
 
 Cover letters: professional business letter layout; **3 short paragraphs + closing** on one page.
 
@@ -88,6 +90,12 @@ REPORT / JOB CONTEXT (evaluation excerpt — mirror keywords ethically; do not i
 ${trimContext(ctx.reportExcerpt, 12_000)}
 ---
 
+Tailoring rules (strict):
+- Re-rank experience bullets by relevance to this role.
+- Rewrite bullet wording to align with job requirements/keywords from REPORT.
+- Keep facts true but express role-fit explicitly (stack, domain, outcomes).
+- Avoid copy/paste bullet sentences from SOURCE_CV.
+
 Output exactly ONE block in this form (nothing before or after the tags):
 <<<HOSTED_HTML>>>
 <!DOCTYPE html> ... complete **one-page** ATS-style CV: Stanford-style chronological single column, keyword-rich compact bullets, serif CSS per rules above ...
@@ -117,6 +125,11 @@ REPORT / JOB CONTEXT:
 ${trimContext(ctx.reportExcerpt, 12_000)}
 ---
 
+Tailoring rules (strict):
+- Re-rank bullets by relevance to this role.
+- Rewrite language to show role/company fit while keeping facts unchanged.
+- Avoid copy/paste bullet sentences from SOURCE_CV.
+
 Output exactly ONE block:
 <<<HOSTED_HTML>>>
 <!DOCTYPE html> ... **one-page** Stanford-style résumé: slightly fuller phrasing than ATS but same facts, same one-page density constraint ...
@@ -144,7 +157,9 @@ REPORT / JOB CONTEXT:
 ${trimContext(ctx.reportExcerpt, 10_000)}
 ---
 
-Write 3 short paragraphs plus a brief closing — must stay on **one** printed page. Do not invent achievements.
+Write 3 short paragraphs plus a brief closing — must stay on **one** printed page.
+Make it specific to this job/company (mirror role themes from REPORT), and avoid generic/template phrasing.
+Do not invent achievements.
 
 Output exactly ONE block:
 <<<HOSTED_HTML>>>

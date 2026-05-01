@@ -123,6 +123,17 @@ export function ProfileResumeEditor({
 
   const atsBoardsRef = React.useRef<AtsBoardsEditorHandle>(null);
   const portalsSeed = JSON.stringify(initial.portals ?? null);
+  const roleFallbackTitleLines = React.useMemo(() => {
+    const rawPrimary = initial.target_roles?.primary;
+    const primary =
+      Array.isArray(rawPrimary)
+        ? rawPrimary.map(String)
+        : typeof rawPrimary === "string"
+          ? [rawPrimary]
+          : [];
+    const secondary = (initial.target_roles?.secondary ?? []).map(String);
+    return [...new Set([...primary, ...secondary].map((x) => x.trim()).filter(Boolean))];
+  }, [initial.target_roles?.primary, initial.target_roles?.secondary]);
 
   const [cvMarkdown, setCvMarkdown] = React.useState(initialCvMarkdown);
 
@@ -414,7 +425,11 @@ export function ProfileResumeEditor({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <AtsBoardsEditor ref={atsBoardsRef} portalsSeed={portalsSeed} />
+              <AtsBoardsEditor
+                ref={atsBoardsRef}
+                portalsSeed={portalsSeed}
+                fallbackTitleLines={roleFallbackTitleLines}
+              />
             </CardContent>
           </Card>
         </TabsContent>

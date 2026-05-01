@@ -40,6 +40,97 @@ function defaultModel(extra?: string) {
   );
 }
 
+function decodeBasicEntities(s: string): string {
+  return s
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"');
+}
+
+function stripHtmlToText(html: string): string {
+  return decodeBasicEntities(
+    html
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<[^>]+>/g, " "),
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeTextLine(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[`*_#>-]/g, " ")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function markdownBulletLines(md: string): string[] {
+  return md
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => /^[-*+]\s+/.test(l) || /^\d+\.\s+/.test(l))
+    .map((l) => normalizeTextLine(l.replace(/^([-*+]|\d+\.)\s+/, "")))
+    .filter((l) => l.length >= 12);
+}
+
+function htmlBulletLines(html: string): string[] {
+  const out: string[] = [];
+  const re = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+  let m: RegExpExecArray | null = null;
+  while ((m = re.exec(html))) {
+    const raw = stripHtmlToText(m[1]);
+    const norm = normalizeTextLine(raw);
+    if (norm.length >= 12) out.push(norm);
+  }
+  return out;
+}
+
+/**
+ * Flags low-tailoring drafts where most bullets were copied verbatim from SOURCE_CV.
+ * We allow some overlap (facts must stay true), but not near-total bullet reuse.
+ */
+function shouldRetryForLowTailoring(
+  html: string,
+  cvMarkdown: string,
+  reportExcerpt: string,
+): boolean {
+  const gen = htmlBulletLines(html);
+  if (gen.length < 3) return false;
+  const src = markdownBulletLines(cvMarkdown);
+  if (src.length === 0) return false;
+
+  const srcSet = new Set(src);
+  let copied = 0;
+  for (const line of gen) {
+    if (srcSet.has(line)) copied++;
+  }
+  const copiedRatio = copied / gen.length;
+
+  const hasJobContext = reportExcerpt.trim().length > 80;
+  const threshold = hasJobContext ? 0.55 : 0.72;
+  return copiedRatio >= threshold;
+}
+
+function tailoringRetrySuffix(args: {
+  kind: "ats" | "full" | "cl";
+  company: string;
+  role: string;
+}): string {
+  const flavor =
+    args.kind === "ats"
+      ? "ATS CV"
+      : args.kind === "full"
+        ? "FULL CV"
+        : "COVER LETTER";
+  return `\n\nRETRY INSTRUCTION (${flavor}):\n- The previous draft was too close to SOURCE_CV wording.\n- Rewrite to be truly tailored for ${args.role} at ${args.company}.\n- Keep facts identical, but reframe bullets around the role requirements from REPORT / JOB CONTEXT.\n- Do NOT copy bullet sentences verbatim from SOURCE_CV.\n- Reorder sections and bullets by relevance to this role.\n- Make the fit explicit in wording (tools, domain, outcomes) without inventing anything.`;
+}
+
 async function runHtmlModel(prompt: string, model: string): Promise<string> {
   return runGeminiPromptWithConfig(prompt, model, {
     temperature: 0.25,
@@ -250,21 +341,51 @@ export async function POST(req: NextRequest) {
 
     if (kind === "cv" || kind === "both") {
       log.push("→ Generating ATS HTML (model, one-page layout)…");
-      const atsText = await runHtmlModel(buildHostedAtsHtmlPrompt(ctx), model);
-      const atsHtml = extractHostedHtmlBlock(atsText);
+      const atsPrompt = buildHostedAtsHtmlPrompt(ctx);
+      const atsText = await runHtmlModel(atsPrompt, model);
+      let atsHtml = extractHostedHtmlBlock(atsText);
       if (!atsHtml) {
         throw new Error(
           "Could not parse ATS HTML from the model. Try again or switch model.",
         );
       }
+      if (shouldRetryForLowTailoring(atsHtml, cvMarkdown, reportExcerpt)) {
+        log.push("↻ ATS draft looked too close to base CV; retrying with stronger tailoring instructions…");
+        const retryText = await runHtmlModel(
+          atsPrompt +
+            tailoringRetrySuffix({
+              kind: "ats",
+              company,
+              role,
+            }),
+          model,
+        );
+        const retryHtml = extractHostedHtmlBlock(retryText);
+        if (retryHtml) atsHtml = retryHtml;
+      }
 
       log.push("→ Generating full CV HTML (model, one-page layout)…");
-      const fullText = await runHtmlModel(buildHostedFullHtmlPrompt(ctx), model);
-      const fullHtml = extractHostedHtmlBlock(fullText);
+      const fullPrompt = buildHostedFullHtmlPrompt(ctx);
+      const fullText = await runHtmlModel(fullPrompt, model);
+      let fullHtml = extractHostedHtmlBlock(fullText);
       if (!fullHtml) {
         throw new Error(
           "Could not parse full CV HTML from the model. Try again or switch model.",
         );
+      }
+      if (shouldRetryForLowTailoring(fullHtml, cvMarkdown, reportExcerpt)) {
+        log.push("↻ Full CV draft looked too close to base CV; retrying with stronger tailoring instructions…");
+        const retryText = await runHtmlModel(
+          fullPrompt +
+            tailoringRetrySuffix({
+              kind: "full",
+              company,
+              role,
+            }),
+          model,
+        );
+        const retryHtml = extractHostedHtmlBlock(retryText);
+        if (retryHtml) fullHtml = retryHtml;
       }
 
       atsStorage = await saveTailored({
@@ -298,12 +419,31 @@ export async function POST(req: NextRequest) {
 
     if (kind === "cl" || kind === "both") {
       log.push("→ Generating cover letter HTML (model, one-page layout)…");
-      const clText = await runHtmlModel(buildHostedCoverHtmlPrompt(ctx), model);
-      const clHtml = extractHostedHtmlBlock(clText);
+      const clPrompt = buildHostedCoverHtmlPrompt(ctx);
+      const clText = await runHtmlModel(clPrompt, model);
+      let clHtml = extractHostedHtmlBlock(clText);
       if (!clHtml) {
         throw new Error(
           "Could not parse cover letter HTML from the model. Try again or switch model.",
         );
+      }
+      /**
+       * CLs can also come out too generic. Reuse the same anti-copy guard:
+       * if many lines mirror resume bullets, force a rewrite with role-specific framing.
+       */
+      if (shouldRetryForLowTailoring(clHtml, cvMarkdown, reportExcerpt)) {
+        log.push("↻ Cover letter looked generic/copied; retrying with stronger JD alignment…");
+        const retryText = await runHtmlModel(
+          clPrompt +
+            tailoringRetrySuffix({
+              kind: "cl",
+              company,
+              role,
+            }),
+          model,
+        );
+        const retryHtml = extractHostedHtmlBlock(retryText);
+        if (retryHtml) clHtml = retryHtml;
       }
 
       clStorage = await saveTailored({

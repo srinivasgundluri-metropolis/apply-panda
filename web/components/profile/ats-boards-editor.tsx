@@ -373,30 +373,6 @@ const LOCATION_PRESET_POSITIVE: Record<
   canada: ["canada", "toronto", "vancouver", "montreal", "ottawa", "calgary"],
 };
 
-const ATS_CURATION_STORAGE_KEY = "apply-panda:ats-boards-targeting-reminders:v1";
-
-type StoredCuration = { pledgesFiltersNonSpam?: boolean };
-
-function readStoredCuration(): StoredCuration {
-  if (typeof window === "undefined") return {};
-  try {
-    return JSON.parse(
-      window.localStorage.getItem(ATS_CURATION_STORAGE_KEY) ?? "{}",
-    ) as StoredCuration;
-  } catch {
-    return {};
-  }
-}
-
-function writeStoredCuration(p: StoredCuration) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(ATS_CURATION_STORAGE_KEY, JSON.stringify(p));
-  } catch {
-    /* ignore quota */
-  }
-}
-
 const NEGATIVE_PRESETS = [
   { key: "Intern", label: "Intern" },
   { key: "Junior", label: "Junior" },
@@ -465,11 +441,19 @@ export type ParsedPortalsForm = {
   locationNegativeLines: string;
 };
 
-export function parsePortalsToFormState(cfg: PortalsYamlConfig | null | undefined): ParsedPortalsForm {
+function uniqueNonEmpty(lines: string[]): string[] {
+  return [...new Set(lines.map((x) => x.trim()).filter(Boolean))];
+}
+
+export function parsePortalsToFormState(
+  cfg: PortalsYamlConfig | null | undefined,
+  fallbackTitleLines: string[] = [],
+): ParsedPortalsForm {
+  const fallback = uniqueNonEmpty(fallbackTitleLines);
   const emptyNegative = (): ParsedPortalsForm => ({
     companyFilter: "",
-    titlePreset: "any",
-    positiveLines: "",
+    titlePreset: fallback.length ? "custom" : "any",
+    positiveLines: fallback.join("\n"),
     negativePresetKeys: new Set(),
     negativeExtraLines: "",
     locationPreset: "any",
@@ -506,15 +490,15 @@ export function parsePortalsToFormState(cfg: PortalsYamlConfig | null | undefine
   };
 }
 
-function parseSeed(portalsSeed: string): ParsedPortalsForm {
+function parseSeed(portalsSeed: string, fallbackTitleLines: string[]): ParsedPortalsForm {
   try {
     const cfg =
       portalsSeed && portalsSeed !== "null"
         ? (JSON.parse(portalsSeed) as PortalsYamlConfig)
         : null;
-    return parsePortalsToFormState(cfg);
+    return parsePortalsToFormState(cfg, fallbackTitleLines);
   } catch {
-    return parsePortalsToFormState(null);
+    return parsePortalsToFormState(null, fallbackTitleLines);
   }
 }
 
@@ -598,11 +582,12 @@ export type AtsBoardsEditorHandle = {
 
 export type AtsBoardsEditorProps = {
   portalsSeed: string;
+  fallbackTitleLines?: string[];
 };
 
 export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoardsEditorProps>(
-  function AtsBoardsEditor({ portalsSeed }, ref) {
-    const s0 = parseSeed(portalsSeed);
+  function AtsBoardsEditor({ portalsSeed, fallbackTitleLines = [] }, ref) {
+    const s0 = parseSeed(portalsSeed, fallbackTitleLines);
     const [companyFilter, setCompanyFilter] = React.useState(s0.companyFilter);
     const [titlePreset, setTitlePreset] = React.useState<TitlePreset>(s0.titlePreset);
     const [positiveLines, setPositiveLines] = React.useState(s0.positiveLines);
@@ -621,27 +606,16 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
       s0.locationNegativeLines,
     );
 
-    const [pledges, setPledges] = React.useState<StoredCuration>({
-      pledgesFiltersNonSpam: false,
-    });
-
-    React.useLayoutEffect(() => {
-      setPledges((prev) => ({ ...prev, ...readStoredCuration() }));
-    }, []);
-
-    const setPledgeField = React.useCallback((key: keyof StoredCuration, value: boolean) => {
-      setPledges((prev) => {
-        const next = { ...prev, [key]: value };
-        writeStoredCuration(next);
-        return next;
-      });
-    }, []);
-
-    const lastSeedRef = React.useRef(portalsSeed);
+    const fallbackSeed = React.useMemo(
+      () => uniqueNonEmpty(fallbackTitleLines).join("\n"),
+      [fallbackTitleLines],
+    );
+    const lastSeedRef = React.useRef(`${portalsSeed}::${fallbackSeed}`);
     React.useEffect(() => {
-      if (portalsSeed === lastSeedRef.current) return;
-      lastSeedRef.current = portalsSeed;
-      const next = parseSeed(portalsSeed);
+      const combined = `${portalsSeed}::${fallbackSeed}`;
+      if (combined === lastSeedRef.current) return;
+      lastSeedRef.current = combined;
+      const next = parseSeed(portalsSeed, fallbackTitleLines);
       setCompanyFilter(next.companyFilter);
       setTitlePreset(next.titlePreset);
       setPositiveLines(next.positiveLines);
@@ -650,7 +624,7 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
       setLocationPreset(next.locationPreset);
       setLocationPositiveLines(next.locationPositiveLines);
       setLocationNegativeLines(next.locationNegativeLines);
-    }, [portalsSeed]);
+    }, [portalsSeed, fallbackSeed, fallbackTitleLines]);
 
     const toggleNegative = (key: string) => {
       setNegativePresetKeys((prev) => {
@@ -718,47 +692,17 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
 
     return (
       <div className="flex flex-col gap-8">
-        <div className="rounded-md border bg-muted/30 px-4 py-3 space-y-3 text-sm text-muted-foreground leading-relaxed">
+        <div className="rounded-md border bg-muted/30 px-4 py-3 space-y-2 text-sm text-muted-foreground leading-relaxed">
           <p>
-            <strong className="text-foreground">Titles and locations drive matches.</strong> When your deployment
-            sets <code className="text-xs">ADZUNA_APP_ID</code> and{" "}
-            <code className="text-xs">ADZUNA_APP_KEY</code>, scans query the Adzuna job index (many employers,
-            not limited to our built-in list) using your title phrases and location lines, then keep the top{" "}
-            <strong className="text-foreground">{HOSTED_SCAN_MATCH_LIMIT}</strong> after your include/exclude
-            rules. Without those env vars, scans fall back to our curated directory of roughly{" "}
-            {DEFAULT_PORTAL_CATALOG_SIZE} public ATS boards (Greenhouse/Ashby/Lever JSON). Leave the optional
-            company filter empty to search broadly—or set it to a substring filter on employer name (case-insensitive).
+            <strong className="text-foreground">Quick setup:</strong> add role titles (Step 1), optionally add
+            locations (Step 2), then run scan. We save up to{" "}
+            <strong className="text-foreground">{HOSTED_SCAN_MATCH_LIMIT}</strong> newest matches.
           </p>
           <p>
-            <strong className="text-foreground">What you get per run:</strong> up to{" "}
-            <strong className="text-foreground">{HOSTED_SCAN_MATCH_LIMIT}</strong> roles, ranked newest-first when the
-            source provides dates. Chat search uses the same cap.
+            With <code className="text-xs">ADZUNA_APP_ID</code> +{" "}
+            <code className="text-xs">ADZUNA_APP_KEY</code>, search is broad across many employers; without
+            those env vars, we use our curated ATS directory (~{DEFAULT_PORTAL_CATALOG_SIZE} boards).
           </p>
-          <ol className="list-decimal pl-5 space-y-1">
-            <li>
-              Included <strong className="text-foreground">titles</strong> (OR across lines)
-            </li>
-            <li>
-              <strong className="text-foreground">Locations</strong> — includes and optional excludes (OR across
-              include lines)
-            </li>
-            <li>
-              Optional <strong className="text-foreground">title excludes</strong> to drop noisy postings
-            </li>
-          </ol>
-          <div className="rounded-md border border-dashed bg-background/60 px-3 py-2 text-xs">
-            <label className="flex cursor-pointer gap-2 items-start">
-              <input
-                type="checkbox"
-                className="mt-0.5 rounded border-input"
-                checked={Boolean(pledges.pledgesFiltersNonSpam)}
-                onChange={(e) => setPledgeField("pledgesFiltersNonSpam", e.target.checked)}
-              />
-              <span>
-                I&apos;ll treat these filters seriously—narrow targeting, not a blank check for mass applying.
-              </span>
-            </label>
-          </div>
         </div>
 
         <div className="space-y-3 border-t pt-8">

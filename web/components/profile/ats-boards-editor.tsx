@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Plus, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -386,6 +387,30 @@ const LOCATION_PRESET_POSITIVE: Record<
   ],
   canada: ["canada", "toronto", "vancouver", "montreal", "ottawa", "calgary"],
 };
+
+const ATS_CURATION_STORAGE_KEY = "apply-panda:ats-boards-targeting-reminders:v1";
+
+type StoredCuration = { pledgesEmployersCurated?: boolean; pledgesFiltersNonSpam?: boolean };
+
+function readStoredCuration(): StoredCuration {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(
+      window.localStorage.getItem(ATS_CURATION_STORAGE_KEY) ?? "{}",
+    ) as StoredCuration;
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredCuration(p: StoredCuration) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(ATS_CURATION_STORAGE_KEY, JSON.stringify(p));
+  } catch {
+    /* ignore quota */
+  }
+}
 
 const NEGATIVE_PRESETS = [
   { key: "Intern", label: "Intern" },
@@ -791,6 +816,23 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
       s0.locationNegativeLines,
     );
 
+    const [pledges, setPledges] = React.useState<StoredCuration>({
+      pledgesEmployersCurated: false,
+      pledgesFiltersNonSpam: false,
+    });
+
+    React.useLayoutEffect(() => {
+      setPledges((prev) => ({ ...prev, ...readStoredCuration() }));
+    }, []);
+
+    const setPledgeField = React.useCallback((key: keyof StoredCuration, value: boolean) => {
+      setPledges((prev) => {
+        const next = { ...prev, [key]: value };
+        writeStoredCuration(next);
+        return next;
+      });
+    }, []);
+
     const lastSeedRef = React.useRef(portalsSeed);
     React.useEffect(() => {
       if (portalsSeed === lastSeedRef.current) return;
@@ -922,147 +964,71 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
 
     return (
       <div className="flex flex-col gap-8">
-        <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm text-muted-foreground leading-relaxed">
-          <strong className="text-foreground">How this works:</strong> You choose{" "}
-          <strong className="text-foreground">role titles</strong> and optional{" "}
-          <strong className="text-foreground">locations</strong> first. Listed jobs must match both
-          (plus optional chat keywords). ATS APIs still need{" "}
-          <strong className="text-foreground">specific board URLs</strong> below — there is no
-          supported “globally scrape every employer” endpoint.
-        </div>
-
-        <div className="space-y-3">
-          <Label className="text-base font-medium">Roles — job titles</Label>
-          <p className="text-sm text-muted-foreground">
-            Only postings whose titles pass these substring rules stay in results. Lines are combined with{" "}
-            <strong className="text-foreground">OR</strong>: the title needs at least one include match.
-            Presets bundle common phrases (not every official US title occupation code).
+        <div className="rounded-md border bg-muted/30 px-4 py-3 space-y-3 text-sm text-muted-foreground leading-relaxed">
+          <p>
+            <strong className="text-foreground">Curate employers first.</strong> Add career boards only
+            for companies you&apos;d realistically engage with—fit, legitimacy, commute or remote stance,
+            and stage matter beyond the job title alone. Matching your title plus location keywords is{" "}
+            <strong className="text-foreground">necessary, not sufficient</strong> when deciding who
+            deserves your time.
           </p>
-          <Select
-            value={titlePreset}
-            onValueChange={(v) => handleTitlePreset(v as TitlePreset)}
-          >
-            <SelectTrigger className="w-full max-w-md">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(Object.keys(TITLE_PRESET_LABEL) as TitlePreset[]).map((k) => (
-                <SelectItem key={k} value={k}>
-                  {TITLE_PRESET_LABEL[k]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="space-y-1.5">
-            <Label htmlFor="positive-keywords" className="text-xs text-muted-foreground">
-              Include titles containing (one phrase per line — OR across lines)
-            </Label>
-            <Textarea
-              id="positive-keywords"
-              value={positiveLines}
-              onChange={(e) => {
-                setPositiveLines(e.target.value);
-                setTitlePreset("custom");
-              }}
-              disabled={titlePreset === "any"}
-              rows={titlePreset === "usa_wide" ? 16 : 6}
-              className="font-mono text-xs min-h-[120px]"
-              placeholder="e.g. Engineer&#10;Machine Learning"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <Label className="text-base font-medium">Roles — exclude from titles</Label>
-          <p className="text-sm text-muted-foreground">
-            If the title contains any of these fragments, drop the posting.
+          <p>
+            <strong className="text-foreground">How scanning works:</strong> We fetch supported ATS
+            postings for employers you configure in Step 1. Step 2 and 4 narrow hits on our side
+            using substring filters; chat can tighten further later. No “every company globally” endpoint
+            exists.
           </p>
-          <div className="flex flex-wrap gap-x-4 gap-y-2">
-            {NEGATIVE_PRESETS.map((p) => (
-              <label
-                key={p.key}
-                className="flex items-center gap-2 text-sm cursor-pointer select-none"
-              >
+          <ol className="list-decimal pl-5 space-y-1">
+            <li>
+              Employers / <strong className="text-foreground">job-board URLs</strong>
+            </li>
+            <li>
+              Included <strong className="text-foreground">titles</strong> (OR semantics)
+            </li>
+            <li>
+              Optional title <strong className="text-foreground">excludes</strong>
+            </li>
+            <li>
+              Optional <strong className="text-foreground">location</strong> lines
+            </li>
+          </ol>
+          <div className="rounded-md border border-dashed bg-background/60 px-3 py-2 text-xs">
+            <div className="font-medium text-foreground">Targeting checklist — saved in this browser</div>
+            <div className="mt-2 space-y-2">
+              <label className="flex cursor-pointer gap-2 items-start">
                 <input
                   type="checkbox"
-                  checked={negativePresetKeys.has(p.key)}
-                  onChange={() => toggleNegative(p.key)}
-                  className="rounded border-input"
+                  className="mt-0.5 rounded border-input"
+                  checked={Boolean(pledges.pledgesEmployersCurated)}
+                  onChange={(e) => setPledgeField("pledgesEmployersCurated", e.target.checked)}
                 />
-                {p.label}
+                <span>My boards list is deliberate—not every employer with any supported ATS URL.</span>
               </label>
-            ))}
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="negative-extra" className="text-xs text-muted-foreground">
-              Extra title excludes (one per line)
-            </Label>
-            <Textarea
-              id="negative-extra"
-              value={negativeExtraLines}
-              onChange={(e) => setNegativeExtraLines(e.target.value)}
-              rows={3}
-              className="font-mono text-xs"
-              placeholder="e.g. WordPress"
-            />
+              <label className="flex cursor-pointer gap-2 items-start">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 rounded border-input"
+                  checked={Boolean(pledges.pledgesFiltersNonSpam)}
+                  onChange={(e) => setPledgeField("pledgesFiltersNonSpam", e.target.checked)}
+                />
+                <span>
+                  Titles and locations sharpen this list—they are not a blank check to blanket-apply or
+                  spray low-context applications.
+                </span>
+              </label>
+            </div>
           </div>
         </div>
 
-        <div className="space-y-3 border-t pt-6">
-          <Label className="text-base font-medium">Locations</Label>
+        <section className="rounded-lg border border-border bg-muted/10 p-4 sm:p-5 space-y-3">
+          <div className="flex flex-wrap items-center gap-2 gap-y-1">
+            <Badge variant="secondary">Step 1</Badge>
+            <Label className="text-base font-medium">Employers — job boards</Label>
+          </div>
           <p className="text-sm text-muted-foreground">
-            Optional. Matched against the ATS &quot;location&quot; text returned for each posting
-            (substring, case-insensitive). Presets are hints, not geography APIs.
+            Pick only boards you intend to monitor. Larger boards amplify noise—you still filter by titles
+            and locations below.
           </p>
-          <Select
-            value={locationPreset}
-            onValueChange={(v) => handleLocationPreset(v as LocationPreset)}
-          >
-            <SelectTrigger className="w-full max-w-md">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(Object.keys(LOCATION_PRESET_LABEL) as LocationPreset[]).map((k) => (
-                <SelectItem key={k} value={k}>
-                  {LOCATION_PRESET_LABEL[k]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="space-y-1.5">
-            <Label htmlFor="location-include" className="text-xs text-muted-foreground">
-              Locations must contain (any line matches — OR logic)
-            </Label>
-            <Textarea
-              id="location-include"
-              value={locationPositiveLines}
-              onChange={(e) => {
-                setLocationPositiveLines(e.target.value);
-                setLocationPreset("custom");
-              }}
-              disabled={locationPreset === "any"}
-              rows={4}
-              className="font-mono text-xs"
-              placeholder={`e.g. Remote\nGermany`}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="location-exclude" className="text-xs text-muted-foreground">
-              Locations containing these are excluded (one per line)
-            </Label>
-            <Textarea
-              id="location-exclude"
-              value={locationNegativeLines}
-              onChange={(e) => setLocationNegativeLines(e.target.value)}
-              rows={3}
-              className="font-mono text-xs"
-              placeholder="e.g. India&#10;Australia"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-3 border-t pt-6">
-          <Label className="text-base font-medium">Where to fetch jobs (boards)</Label>
           <Select
             value={boardEntryMode}
             onValueChange={(v) => {
@@ -1105,8 +1071,8 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
               </p>
               {bulkPasteHasUnsupportedLines(bulkPaste) ? (
                 <p className="text-xs text-destructive">
-                  Some lines cannot be mapped to supported ATS URLs — fix links or switch to
-                  one-by-one entry.
+                  Some lines cannot be mapped to supported ATS URLs — fix links or switch to one-by-one
+                  entry.
                 </p>
               ) : null}
               <Textarea
@@ -1120,7 +1086,9 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
                 type="button"
                 variant="secondary"
                 size="sm"
-                onClick={() => setBulkPaste(rows.map((r) => buildCareersUrl(r)).filter(Boolean).join("\n"))}
+                onClick={() =>
+                  setBulkPaste(rows.map((r) => buildCareersUrl(r)).filter(Boolean).join("\n"))
+                }
               >
                 Copy current boards from rows into textarea
               </Button>
@@ -1145,7 +1113,7 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
                   {rows.map((row, idx) => (
                     <div
                       key={row.id}
-                      className="rounded-lg border bg-muted/20 p-4 flex flex-col gap-3 sm:grid sm:grid-cols-12 sm:gap-3 sm:items-end"
+                      className="rounded-lg border bg-muted/30 p-4 flex flex-col gap-3 sm:grid sm:grid-cols-12 sm:gap-3 sm:items-end"
                     >
                       <div className="sm:col-span-3 space-y-1.5">
                         <Label className="text-xs text-muted-foreground">
@@ -1224,6 +1192,146 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
               )}
             </>
           )}
+        </section>
+
+        <div className="space-y-3 border-t pt-8">
+          <div className="flex flex-wrap items-center gap-2 gap-y-1">
+            <Badge variant="outline">Step 2</Badge>
+            <Label className="text-base font-medium">Roles — job titles to include</Label>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Further narrows postings from employers in Step 1. Lines are combined with{" "}
+            <strong className="text-foreground">OR</strong>: the title needs at least one include match.
+            Presets bundle common phrases—not every occupational title in existence.
+          </p>
+          <Select
+            value={titlePreset}
+            onValueChange={(v) => handleTitlePreset(v as TitlePreset)}
+          >
+            <SelectTrigger className="w-full max-w-md">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(TITLE_PRESET_LABEL) as TitlePreset[]).map((k) => (
+                <SelectItem key={k} value={k}>
+                  {TITLE_PRESET_LABEL[k]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="space-y-1.5">
+            <Label htmlFor="positive-keywords" className="text-xs text-muted-foreground">
+              Include titles containing (one phrase per line — OR across lines)
+            </Label>
+            <Textarea
+              id="positive-keywords"
+              value={positiveLines}
+              onChange={(e) => {
+                setPositiveLines(e.target.value);
+                setTitlePreset("custom");
+              }}
+              disabled={titlePreset === "any"}
+              rows={titlePreset === "usa_wide" ? 16 : 6}
+              className="font-mono text-xs min-h-[120px]"
+              placeholder="e.g. Engineer&#10;Machine Learning"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-3 border-t pt-8">
+          <div className="flex flex-wrap items-center gap-2 gap-y-1">
+            <Badge variant="outline">Step 3</Badge>
+            <Label className="text-base font-medium">Roles — exclude from titles</Label>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            If the title contains any of these fragments, drop the posting (still scoped to employers in
+            Step 1).
+          </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            {NEGATIVE_PRESETS.map((p) => (
+              <label
+                key={p.key}
+                className="flex items-center gap-2 text-sm cursor-pointer select-none"
+              >
+                <input
+                  type="checkbox"
+                  checked={negativePresetKeys.has(p.key)}
+                  onChange={() => toggleNegative(p.key)}
+                  className="rounded border-input"
+                />
+                {p.label}
+              </label>
+            ))}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="negative-extra" className="text-xs text-muted-foreground">
+              Extra title excludes (one per line)
+            </Label>
+            <Textarea
+              id="negative-extra"
+              value={negativeExtraLines}
+              onChange={(e) => setNegativeExtraLines(e.target.value)}
+              rows={3}
+              className="font-mono text-xs"
+              placeholder="e.g. WordPress"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-3 border-t pt-8">
+          <div className="flex flex-wrap items-center gap-2 gap-y-1">
+            <Badge variant="outline">Step 4</Badge>
+            <Label className="text-base font-medium">Locations</Label>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Optional. Applies on top of whatever passes Steps 2–3. Matched against the ATS &quot;location&quot;
+            text for each posting (substring, case-insensitive). Presets are hints—not zip-code geocoding.
+          </p>
+          <Select
+            value={locationPreset}
+            onValueChange={(v) => handleLocationPreset(v as LocationPreset)}
+          >
+            <SelectTrigger className="w-full max-w-md">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(LOCATION_PRESET_LABEL) as LocationPreset[]).map((k) => (
+                <SelectItem key={k} value={k}>
+                  {LOCATION_PRESET_LABEL[k]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="space-y-1.5">
+            <Label htmlFor="location-include" className="text-xs text-muted-foreground">
+              Locations must contain (any line matches — OR logic)
+            </Label>
+            <Textarea
+              id="location-include"
+              value={locationPositiveLines}
+              onChange={(e) => {
+                setLocationPositiveLines(e.target.value);
+                setLocationPreset("custom");
+              }}
+              disabled={locationPreset === "any"}
+              rows={4}
+              className="font-mono text-xs"
+              placeholder={`e.g. Remote\nGermany`}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="location-exclude" className="text-xs text-muted-foreground">
+              Locations containing these are excluded (one per line)
+            </Label>
+            <Textarea
+              id="location-exclude"
+              value={locationNegativeLines}
+              onChange={(e) => setLocationNegativeLines(e.target.value)}
+              rows={3}
+              className="font-mono text-xs"
+              placeholder="e.g. India&#10;Australia"
+            />
+          </div>
         </div>
 
         <details className="rounded-lg border bg-muted/10 text-sm">

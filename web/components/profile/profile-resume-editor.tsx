@@ -396,8 +396,8 @@ export function ProfileResumeEditor({
               <CardTitle>ATS job boards</CardTitle>
               <CardDescription className="space-y-2 text-sm leading-relaxed">
                 <p>
-                  Choose which company career sites we query for open roles (Greenhouse, Ashby,
-                  Lever, and Workday-hosted boards on{" "}
+                  Add employers and board URLs deliberately first, then use titles and locations to narrow
+                  results. Covers Greenhouse, Ashby, Lever, and Workday (
                   <code className="text-muted-foreground">myworkdayjobs.com</code>
                   ). This list is private to your account and powers{" "}
                   <strong>Chat → search job boards</strong> and <strong>Pipeline → Scan job boards</strong>.

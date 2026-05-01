@@ -6,7 +6,7 @@ This document describes production setup for hosted ApplyPanda (Vercel + Supabas
 
 1. Create a Supabase project.
 2. In SQL editor, run `web/supabase/schema.sql`.
-3. Create a storage bucket named `documents` (private). If you configure **allowed MIME types**, ensure **generic binary** (`application/octet-stream` — used for tailored `.html`) is allowed, or leave the list unrestricted. If uploads fail with “mime type … is not supported”, run **`web/supabase/alter-storage-documents-bucket-mime.sql`** once or relax types in Dashboard → Storage → `documents`.
+3. Create a storage bucket named `documents` (private). If you configure **allowed MIME types**, allow **`application/pdf`** for tailored exports and **`application/octet-stream`** for printable HTML fallbacks (or leave unrestricted). If uploads fail with “mime type … is not supported”, run **`web/supabase/alter-storage-documents-bucket-mime.sql`** once or relax types in Dashboard → Storage → `documents`.
 4. In the SQL editor, run `web/supabase/storage-documents-policies.sql` so authenticated users can read/write objects under `{their_user_id}/…` (required for tailored draft uploads).
 5. In Auth settings, configure email auth (password + optional confirmation).
 
@@ -22,7 +22,7 @@ Set these in Vercel Project Settings -> Environment Variables:
 - `OPENAI_FALLBACK_MODELS` (optional comma-separated fallback list for 429/503 mitigation)
 - `APPLYPANDA_ALLOWED_EMAILS` (comma-separated allowlist for access control)
 - `APPLYPANDA_LOCKDOWN` (optional, set `true` to force global 503 maintenance mode)
-- **Tailored `/api/docs/generate` is HTML-only** (`…-ats.html`, `…-full.html`, `…-cover.html`). Older env vars **`APPLYPANDA_SKIP_PDF`** / **`APPLYPANDA_SKIP_DOCX`** have no effect and can be deleted.
+- `APPLYPANDA_SKIP_PDF` (optional, `1` / `true` / `yes` — skip Chromium; tracker gets **printable `.html`** instead of `.pdf` for each tailored file). Prompts target **one US Letter page per file**; PDF export still depends on headless Chrome when this is unset.
 
 Legacy DB columns `applications.cv_ats_docx_path`, `cv_full_docx_path`, `cl_docx_path` remain nullable; regenerate clears them when present. **Existing** installs that predated DOCX tracking: run `web/supabase/alter-applications-docx-paths.sql` once if those columns are missing.
 
@@ -58,13 +58,9 @@ The `web/package.json` field `**packageManager**` pins pnpm via Corepack for con
 
 6. If logs show **The framework produced an invalid deployment package for a Serverless Function** / **symlinked directories** after `next build` succeeds, Vercel is rejecting **pnpm’s symlink tree** in the function bundle. `**web/.npmrc**` sets `**node-linker=hoisted**` (flatter `node_modules`). Redeploy with **Clear build cache** once so installs use that layout.
 
-**Tailored documents** (`/api/docs/generate`): model output is saved as **print-ready HTML** in Storage and linked from the Tracker. Users who need PDFs open the `.html` in a browser → **Print → Save as PDF**. `**web/vercel.json**` keeps **120s** `maxDuration` for LLM latency + uploads (no Chromium in this route).
+**Tailored documents** (`/api/docs/generate`): the model emits **one-page US Letter** HTML; the server renders **`…-ats.pdf`**, **`…-full.pdf`**, **`…-cover.pdf`** with `puppeteer-core` + `@sparticuz/chromium` when Chromium starts. If launch or `page.pdf()` fails, the route saves **`.html`** to the sibling path instead (same basename) and links that from the Tracker. **`APPLYPANDA_SKIP_PDF`** forces HTML-only without starting Chromium. `**web/vercel.json**` keeps **120s** `maxDuration`; give the function enough **memory** in the Vercel UI for Sparticuz (Fluid Compute ignores `memory` in `vercel.json`).
 
-**Optional Chromium debug** (`**/api/docs/pdf-probe`): still available if you need to troubleshoot Puppeteer/Sparticuz installs for other tooling; tailored generation does **not** call it.
-
-1. Sign in → open **`/api/docs/pdf-probe`** (same deployment or local `pnpm dev`).
-2. If `diagnostics.sparticuzBinPresent` is false in production, check `next.config.ts` **`outputFileTracingIncludes`** for `@sparticuz/chromium/bin`.
-3. **Local:** Chrome/Edge/Brave or **`PUPPETEER_EXECUTABLE_PATH`** (often `**/Applications/Google Chrome.app/Contents/MacOS/Google Chrome**` on macOS).
+**PDF / Chromium troubleshooting** (`**/api/docs/pdf-probe`): sign in → open **`/api/docs/pdf-probe`**. Sparticuz `bin` path should exist (`next.config.ts` **`outputFileTracingIncludes`**). **Local:** Chrome/Edge/Brave or **`PUPPETEER_EXECUTABLE_PATH`**.
 
 ## 4) Smoke checklist
 
@@ -74,7 +70,7 @@ The `web/package.json` field `**packageManager**` pins pnpm via Corepack for con
 - Chat route (`/api/chat/stream`) returns model output.
 - Resume coach route (`/api/resume-context/apply`) works with `OPENAI_API_KEY`.
 - Applications/profile/reports/scan APIs return only authenticated user data.
-- Run an evaluation once: Tracker should show a new row; tailored doc generation should create **HTML** artifacts under **Documents** after the stream finishes (Markdown drafts are optional/legacy elsewhere).
+- Run an evaluation once: Tracker should show a new row; tailored generation should create **PDF** artifacts (or **HTML** if PDF is skipped/unavailable) under **Documents** after the stream finishes.
 
 ## 5) Security notes
 

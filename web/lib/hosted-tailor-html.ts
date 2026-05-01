@@ -17,7 +17,20 @@ export interface HostedTailorContext {
   coverLetterVoice: string;
 }
 
-const ONE_PAGE_RULE = `**Single printed page (mandatory):** The output MUST fit on **exactly one US Letter (8.5×11 in) page** when printed or rendered to PDF (no second page, no clipped overflow). You must **shorten** content (drop or merge older roles, trim bullets, tighten skills) until it fits — do not assume the engine will auto-shrink. In embedded CSS include \`@page { size: letter; margin: 0.45in; }\` and use compact print styles: body ~9.5–10.5pt for résumés or ~11pt for cover letters, line-height ~1.15–1.25, tight section gaps.`;
+const ONE_PAGE_RULE = `**Single printed page (mandatory):** The output MUST fit on **exactly one US Letter (8.5×11 in) page** when printed or rendered to PDF (no second page, no clipped overflow). You must **shorten content** until it fits — never solve overflow by tiny text.
+
+Readability guardrails:
+- Résumé body text must be **10.5pt to 11pt** (never below 10.5pt).
+- Cover-letter body text must be **11pt**.
+- Line-height should stay in **1.15–1.25**.
+
+In embedded CSS include \`@page { size: letter; margin: 1in; }\` and compact but readable spacing.
+
+If content overflows, prune in this order:
+1) Remove least-relevant/oldest experience bullets.
+2) Reduce bullets to top impact points only.
+3) Collapse/trim low-signal skills list items.
+4) Keep facts; do not invent or exaggerate.`;
 
 const HTML_RULES = `HTML requirements (all documents):
 - Standalone file: <!DOCTYPE html>, <html lang="en">, embedded <style> only (no external CSS/JS/fonts).
@@ -25,16 +38,31 @@ const HTML_RULES = `HTML requirements (all documents):
 - No scripts; no decorative graphics or charts.
 - Use semantic markup; keep content honest — only facts from SOURCE_CV and REPORT.
 ${ONE_PAGE_RULE}
+- Match the user's provided template style: clean, text-forward, no decorative elements, no icons.
 
 Cover letters: professional business letter layout; **3 short paragraphs + closing** on one page.
 
 Résumés (ATS + Full — Stanford-style chronological, both still **one page each**):
-- **ATS variant:** keyword-rich, slightly denser spacing; smallest readable body size within the one-page rule.
-- **Full variant:** same facts as ATS but slightly more readable phrasing in bullets — still **one page**; do not add enough text to spill to page 2.
+- **ATS variant:** keyword-rich and dense, but readable (10.5–11pt body).
+- **Full variant:** same facts as ATS with slightly more context where space allows; still one page and same font-size floor.
 - **Layout:** left-aligned blocks; ~0.45in effective side margins in CSS; reverse chronological order.
 - **Typography:** Times New Roman, Times, or Charter for body; simple headings.
-- **Structure:** CONTACT under H1 (name) → Education (if present) → Experience (most recent first, title | org | dates, tight bullets) → Skills/Projects only if supported by SOURCE_CV.
-- **Bullets:** one line when possible; action verbs; quantify only from SOURCE_CV — never invent metrics.
+- **Header formatting (template-aligned):**
+  - Candidate name in H1, centered.
+  - Contact line directly below, centered, plain text separators (e.g., \`|\`).
+- **Structure (template-aligned):**
+  - Optional short **Summary** section (2–3 lines max) if it adds signal.
+  - **Experience**: most recent first.
+    - Role/company line should mirror template tone: bold either company OR title (not both), location on same line, dates right-aligned.
+    - Include 2–4 bullet accomplishments per role when space allows.
+  - **Additional Experience** for older/less-relevant roles can be compressed to single-line entries.
+  - **Education** after Experience unless SOURCE_CV strongly indicates otherwise.
+  - **Skills/Certifications** as compact grouped lines near the end.
+- **Content budget (enforce for one-page readability):**
+  - Experience entries: target **2–3 most relevant roles** (rarely 4).
+  - Bullets per role: **max 2** for ATS, **max 3** for Full.
+  - Bullets should be concise (prefer one line; usually <= 22 words).
+- **Bullets:** action verbs first; quantify only from SOURCE_CV — never invent metrics.
 `;
 
 export function buildHostedAtsHtmlPrompt(ctx: HostedTailorContext): string {

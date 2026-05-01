@@ -62,7 +62,7 @@ export interface ApplicationRow {
   hasCl: boolean;
   /** Relative path — prefer ATS for canonical “CV” chip; see also full/legacy URLs. */
   cvPath: string | null;
-  /** Relative path to cover letter artifact in storage (often `.html`), if found. */
+  /** Relative path to cover letter in storage (`*.pdf` or fallback `*.html`). */
   clPath: string | null;
   /** Primary CV download URL (prefer ATS variant). */
   cvDownload: string | null;

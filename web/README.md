@@ -27,7 +27,7 @@ OPENAI_API_KEY=...
 OPENAI_MODEL=gpt-4.1-mini
 OPENAI_FALLBACK_MODELS="gpt-4.1-mini"
 APPLYPANDA_ALLOWED_EMAILS="user1@example.com,user2@example.com,user3@example.com,user4@example.com"
-# Optional: Chrome path for debugging `/api/docs/pdf-probe` (tailored artifacts are HTML-only)
+# Optional: Chrome/Chromium binary for tailored PDF rendering locally (or debugging `/api/docs/pdf-probe`)
 # PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ```
 
@@ -63,7 +63,7 @@ All tables are user-scoped with Supabase RLS.
 
 - `POST /api/chat/stream` -> LLM SSE chat
 - `POST /api/eval/stream` -> LLM SSE evaluation output
-- `POST /api/docs/generate` -> printable HTML via model to Storage; updates `applications` + `documents`
+- `POST /api/docs/generate` -> one-page Letter HTML via model → PDF (Chromium) to Storage with HTML fallback; updates `applications` + `documents`
 - `POST /api/docs/persist-artifact` -> optional Markdown-only save (legacy)
 - `POST /api/resume-context/apply` -> LLM profile/resume coach
 - `GET/PUT /api/profile` -> `profiles`

@@ -16,7 +16,7 @@ Set these in Vercel Project Settings -> Environment Variables:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` (server-only; required for permanent account deletion flow)
+- `SUPABASE_SERVICE_ROLE_KEY` (server-only; account deletion flow; tailored-doc **Storage** uploads also use this on the server with paths prefixed strictly as `{authenticated_user_id}/` — avoids flaky Storage RLS with the JWT. Set **`APPLYPANDA_STORAGE_FORCE_USER_JWT=true`** only to force JWT Storage requests instead (then policies in `storage-documents-policies.sql` must pass).)
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL` (optional; defaults to `gpt-4.1-mini`)
 - `OPENAI_FALLBACK_MODELS` (optional comma-separated fallback list for 429/503 mitigation)

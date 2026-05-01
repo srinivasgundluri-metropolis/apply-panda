@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { formatPostgrestError } from "@/lib/supabase-error";
 
 export function slugTailoredSegment(raw: string): string {
@@ -23,6 +23,39 @@ type UploadTailoredArtifactParams = {
   contentType: string;
 };
 
+/** Reject traversal and ensure uploads only ever land under `{userId}/`. */
+function assertOwnedUserStoragePath(storagePath: string, userId: string): void {
+  if (storagePath.includes("..")) {
+    throw new Error("Invalid storage path.");
+  }
+  const prefix = `${userId}/`;
+  if (!storagePath.startsWith(prefix)) {
+    throw new Error(`Storage path must start with authenticated user prefix.`);
+  }
+}
+
+/**
+ * Server-side uploads: user JWT Storage RLS occasionally fails (“new row violates RLS”).
+ * Use service role only when SUPABASE_SERVICE_ROLE_KEY is set; path MUST pass
+ * assertOwnedUserStoragePath first. Force user JWT with APPLYPANDA_STORAGE_FORCE_USER_JWT=true.
+ */
+function clientForDocumentsStorageUpload(userClient: SupabaseClient): SupabaseClient {
+  const forceJwt = ["1", "true", "yes"].includes(
+    (process.env.APPLYPANDA_STORAGE_FORCE_USER_JWT ?? "").trim().toLowerCase(),
+  );
+  if (forceJwt) return userClient;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!url || !serviceKey) return userClient;
+  return createClient(url, serviceKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+}
+
 async function uploadTailoredArtifact(params: UploadTailoredArtifactParams) {
   const {
     supabase,
@@ -35,7 +68,10 @@ async function uploadTailoredArtifact(params: UploadTailoredArtifactParams) {
     contentType,
   } = params;
 
-  const { error: upErr } = await supabase.storage
+  assertOwnedUserStoragePath(storagePath, userId);
+  const storageClient = clientForDocumentsStorageUpload(supabase);
+
+  const { error: upErr } = await storageClient.storage
     .from("documents")
     .upload(storagePath, buffer, {
       contentType,
@@ -44,9 +80,9 @@ async function uploadTailoredArtifact(params: UploadTailoredArtifactParams) {
 
   if (upErr) {
     throw new Error(
-      `Upload failed (${contentType.split(";")[0]}): ${upErr.message}. ` +
-        `Check RLS (web/supabase/storage-documents-policies.sql) and bucket MIME rules ` +
-        `(web/supabase/alter-storage-documents-bucket-mime.sql). Path prefix: ${userId}/`,
+      `Storage.upload failed (${contentType.split(";")[0]}): ${upErr.message}. ` +
+        `Re-run Storage policies (web/supabase/storage-documents-policies.sql) and MIME rules ` +
+        `(alter-storage-documents-bucket-mime.sql). Path: ${storagePath}`,
     );
   }
 
@@ -61,8 +97,10 @@ async function uploadTailoredArtifact(params: UploadTailoredArtifactParams) {
   });
 
   if (insErr) {
-    await supabase.storage.from("documents").remove([storagePath]);
-    throw new Error(formatPostgrestError(insErr));
+    await storageClient.storage.from("documents").remove([storagePath]);
+    throw new Error(
+      `documents table insert failed: ${formatPostgrestError(insErr)}`,
+    );
   }
 }
 

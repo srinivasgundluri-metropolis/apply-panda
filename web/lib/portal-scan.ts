@@ -341,6 +341,25 @@ export function buildLocationFilter(
   return buildSubstringTextFilter(locationFilter);
 }
 
+function hasPositiveKeywords(filter: { positive?: string[] } | undefined): boolean {
+  return (filter?.positive ?? []).some((x) => String(x).trim().length > 0);
+}
+
+/**
+ * Location filtering in third-party APIs is noisy: many rows have empty or
+ * non-standard location strings. When the user sets positive location phrases,
+ * keep rows with unknown location instead of dropping everything.
+ */
+function locationPassWithUnknownAllowed(
+  locationText: string,
+  locationFilter: { positive?: string[]; negative?: string[] } | undefined,
+  checker: (text: string) => boolean,
+): boolean {
+  const text = locationText.trim();
+  if (text) return checker(text);
+  return hasPositiveKeywords(locationFilter);
+}
+
 function positiveLineCount(lines: string[] | undefined): number {
   return (lines ?? []).filter((x) => String(x).trim().length > 0).length;
 }
@@ -509,7 +528,13 @@ export async function collectAllTitleFilteredPortalJobs(
     }
     if (!where.trim()) {
       const locationFilter = buildLocationFilter(cfg.location_filter);
-      filtered = filtered.filter((j) => locationFilter(j.location ?? ""));
+      filtered = filtered.filter((j) =>
+        locationPassWithUnknownAllowed(
+          j.location ?? "",
+          cfg.location_filter,
+          locationFilter,
+        ),
+      );
     }
     if (companyNeedle) {
       filtered = filtered.filter((j) =>
@@ -573,7 +598,11 @@ export async function collectAllTitleFilteredPortalJobs(
             (j) =>
               j.url &&
               titleFilter(j.title) &&
-              locationFilter(j.location ?? ""),
+              locationPassWithUnknownAllowed(
+                j.location ?? "",
+                scanCfg.location_filter,
+                locationFilter,
+              ),
           );
         } catch {
           return [];

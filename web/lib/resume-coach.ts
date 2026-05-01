@@ -48,10 +48,47 @@ const PROFILE_KEYS = new Set([
   "comp_targets",
 ]);
 
+const PROFILE_KEY_ALIASES: Record<string, string> = {
+  targeting: "target_roles",
+  targetting: "target_roles",
+  targetroles: "target_roles",
+  target_role: "target_roles",
+  "target-roles": "target_roles",
+  compensation_targets: "comp_targets",
+  compensationTargets: "comp_targets",
+  compensation_target: "comp_targets",
+};
+
+function normalizeTopLevelProfileKey(raw: string): string {
+  const key = raw.trim();
+  if (!key) return key;
+  const direct = PROFILE_KEY_ALIASES[key];
+  if (direct) return direct;
+  const lower = PROFILE_KEY_ALIASES[key.toLowerCase()];
+  if (lower) return lower;
+  return key;
+}
+
 function sanitizeProfilePatch(p: unknown): Record<string, unknown> | null {
   if (!p || typeof p !== "object" || Array.isArray(p)) return null;
+  let src = p as Record<string, unknown>;
+  /** Some models wrap the actual patch under `profile` or `profile_updates`. */
+  if (
+    src.profile &&
+    typeof src.profile === "object" &&
+    !Array.isArray(src.profile)
+  ) {
+    src = src.profile as Record<string, unknown>;
+  } else if (
+    src.profile_updates &&
+    typeof src.profile_updates === "object" &&
+    !Array.isArray(src.profile_updates)
+  ) {
+    src = src.profile_updates as Record<string, unknown>;
+  }
   const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(p as Record<string, unknown>)) {
+  for (const [rawK, v] of Object.entries(src)) {
+    const k = normalizeTopLevelProfileKey(rawK);
     if (PROFILE_KEYS.has(k)) out[k] = v;
   }
   return Object.keys(out).length ? out : null;
@@ -67,7 +104,11 @@ export function buildInstructionFromUploadedResumeExtract(
 
 Your job:
 1. Produce a **full replacement** Markdown body for canonical resume markdown.
-2. Populate \`profile_updates\` when inferable from résumé text and existing profile.
+2. Populate \`profile_updates\` aggressively when inferable from résumé text and existing profile.
+   - Infer likely **field/domain** from experience (examples: data engineering, ML platform, backend, product analytics).
+   - Infer role ladder + targeting from recent roles and seniority progression.
+   - Fill \`target_roles.primary\`, \`target_roles.secondary\`, and \`target_roles.archetypes\` with concrete role families.
+   - Refresh \`narrative.one_liner\` and \`narrative.proof_points\` using resume-backed facts only.
 3. Only change \`cover_letter_base_md\` when user notes request cover-letter preference updates.
 
 ${notes ? `Additional instructions from the user:\n---\n${notes}\n---\n\n` : ""}Extracted résumé text:\n---\n${clipped}\n---`;
@@ -83,7 +124,11 @@ export function buildInstructionFromUploadedResumeMarkdown(
 
 Your job:
 1. Produce a **full replacement** Markdown body for canonical resume markdown.
-2. Populate \`profile_updates\` when inferable from resume markdown and existing profile.
+2. Populate \`profile_updates\` aggressively when inferable from resume markdown and existing profile.
+   - Infer likely **field/domain** from experience (examples: data engineering, ML platform, backend, product analytics).
+   - Infer role ladder + targeting from recent roles and seniority progression.
+   - Fill \`target_roles.primary\`, \`target_roles.secondary\`, and \`target_roles.archetypes\` with concrete role families.
+   - Refresh \`narrative.one_liner\` and \`narrative.proof_points\` using resume-backed facts only.
 3. Only change \`cover_letter_base_md\` when user notes request cover-letter preference updates.
 
 ${notes ? `Additional instructions from the user:\n---\n${notes}\n---\n\n` : ""}Uploaded resume markdown:\n---\n${clipped}\n---`;
@@ -139,6 +184,10 @@ ${coverRaw.slice(0, 12000)}
 Rules:
 - \`cv_md\`: full replacement markdown or null.
 - \`profile_updates\`: JSON-stringified deep-merge patch (top-level profile keys) or null.
+  - Use canonical key \`target_roles\` (NOT \`targeting\`/\`targetting\`) with fields like \`primary\`, \`secondary\`, \`archetypes\`.
+  - If resume content provides enough evidence, include updates for \`candidate\`, \`target_roles\`, and \`narrative\`.
+  - Prefer non-empty \`target_roles.archetypes\` derived from role history and domain.
+  - For role targeting, synthesize from what the user has actually done; do not leave targeting blank when strong evidence exists.
 - \`cover_letter_base_md\`: full markdown or null.
 - \`chat_reply_md\`: concise markdown summary.
 - Do not invent achievements/metrics.

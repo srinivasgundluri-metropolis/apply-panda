@@ -187,37 +187,46 @@ export function ProfileResumeEditor({
       const portalsFromForm = atsBoardsRef.current?.getConfig() ?? null;
       if (portalsFromForm) {
         payload.portals = portalsFromForm;
-      } else if (initial.portals) {
-        payload.portals = null;
       }
 
-      const [resProfile, resCv] = await Promise.all([
-        fetch("/api/profile", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }),
-        fetch("/api/cv", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ markdown: cvMarkdown }),
-        }),
-      ]);
-
+      const resProfile = await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       const profileBody = (await resProfile.json().catch(() => ({}))) as {
         profile?: Profile;
         error?: string;
       };
+      const profileOk = resProfile.ok;
 
-      if (!resProfile.ok) {
+      const resCv = await fetch("/api/cv", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markdown: cvMarkdown }),
+      });
+      const cvBody = (await resCv.json().catch(() => ({}))) as { error?: string };
+      const cvOk = resCv.ok;
+
+      if (!profileOk && !cvOk) {
+        throw new Error(
+          [
+            profileBody.error ?? `Profile HTTP ${resProfile.status}`,
+            cvBody.error ?? `CV HTTP ${resCv.status}`,
+          ].join(" | "),
+        );
+      }
+      if (!profileOk && cvOk) {
         throw new Error(profileBody.error ?? `Profile HTTP ${resProfile.status}`);
       }
-      if (!resCv.ok) {
-        const j = await resCv.json().catch(() => ({}));
-        throw new Error((j as { error?: string }).error ?? `CV HTTP ${resCv.status}`);
-      }
 
-      toast.success("Profile, scan targeting, and résumé updated.");
+      if (profileOk && cvOk) {
+        toast.success("Profile, scan targeting, and résumé updated.");
+      } else {
+        toast.warning(
+          `Profile updated, but résumé save failed: ${cvBody.error ?? `CV HTTP ${resCv.status}`}`,
+        );
+      }
       router.refresh();
     } catch (err) {
       toast.error(`Save failed: ${(err as Error).message}`);

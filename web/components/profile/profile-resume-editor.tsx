@@ -405,9 +405,11 @@ export function ProfileResumeEditor({
               <CardTitle>Target roles</CardTitle>
               <CardDescription className="text-sm leading-relaxed">
                 Pipeline <strong>Scan job boards</strong> and Chat ATS search match these role lines (plus{" "}
-                <strong>Location</strong> under Candidate). Which employers get queried is controlled by{" "}
-                <code className="text-xs">tracked_companies</code> in the portals snippet below—the same shape as career-ops{" "}
-                <code className="text-xs">portals.yml</code>.
+                <strong>Location</strong> under Candidate). Employer URLs live in the{" "}
+                <a href="#profile-tracked-companies" className="underline font-medium">
+                  tracked_companies YAML block
+                </a>{" "}
+                below (same as career-ops <code className="text-xs">portals.yml</code>).
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
@@ -437,25 +439,28 @@ export function ProfileResumeEditor({
             </CardContent>
           </Card>
 
-          <Card>
+          <Card id="profile-tracked-companies">
             <CardHeader>
-              <CardTitle>Employer ATS boards (`portals.yml`)</CardTitle>
+              <CardTitle>
+                <code className="text-base font-mono tracking-tight">tracked_companies</code>
+                <span className="font-sans font-normal text-muted-foreground"> — employer boards (YAML)</span>
+              </CardTitle>
               <CardDescription className="text-sm leading-relaxed space-y-2">
                 <p>
-                  Paste the <strong>tracked_companies</strong> block from your local career-ops{" "}
-                  <code className="text-xs">portals.yml</code> (whole file works). Hosted scans only hit boards we can reach
-                  over Greenhouse/Ashby/Lever/Workday JSON APIs—matching <code className="text-xs">scan.mjs</code> behavior,
-                  not Playwright scraping.
+                  This box <strong>is</strong> your <code className="text-xs">tracked_companies</code> list—the same key as in
+                  career-ops root <code className="text-xs">portals.yml</code>. Paste that whole file or only the{" "}
+                  <code className="text-xs">tracked_companies:</code> section. Scans hit Greenhouse/Ashby/Lever/Workday JSON
+                  endpoints only (same idea as <code className="text-xs">scan.mjs</code>), not arbitrary career-site scraping.
                 </p>
                 <p>
-                  Optional: keep <strong>company_filter</strong>, <strong>title_filter.negative</strong>, and{" "}
-                  <strong>location_filter.negative</strong> lines from that file—they are preserved here.
+                  Optional from <code className="text-xs">portals.yml</code>: <strong>company_filter</strong>,{" "}
+                  <strong>title_filter.negative</strong>, <strong>location_filter.negative</strong>.
                 </p>
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <Label htmlFor="portals_yaml" className="sr-only">
-                Portals YAML
+            <CardContent className="grid gap-2">
+              <Label htmlFor="portals_yaml" className="text-sm font-medium">
+                YAML starting with <code className="text-xs font-mono">tracked_companies:</code>
               </Label>
               <Textarea
                 id="portals_yaml"

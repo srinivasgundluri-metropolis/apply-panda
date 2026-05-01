@@ -48,6 +48,9 @@ interface Props {
   defaultTab?: "resume" | "yaml" | "portals";
 }
 
+const CHAT_HISTORY_KEY = "career-ops:chat-history";
+const CHAT_RECENT_SEARCH_KEY = "career-ops:recent-searches";
+
 /**
  * Combined editor for `config/profile.yml` and `cv.md` with one **Update**
  * action so tailored CV/cover-letter runs always read fresh canonical data.
@@ -136,6 +139,9 @@ export function ProfileResumeEditor({
   }, [initial.target_roles?.primary, initial.target_roles?.secondary]);
 
   const [cvMarkdown, setCvMarkdown] = React.useState(initialCvMarkdown);
+  const cvIsEmpty = cvMarkdown.trim().length === 0;
+  const resumeCoachImportPrompt =
+    "Use this uploaded resume as the source of truth. Update both cv.md and profile.yml (candidate info, target_roles including archetypes, and narrative proof points). Do not invent metrics. Keep one proof point per line.";
 
   const splitList = (s: string): string[] =>
     s
@@ -153,6 +159,12 @@ export function ProfileResumeEditor({
       const res = await fetch("/api/account/delete", { method: "POST" });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+      try {
+        window.localStorage.removeItem(CHAT_HISTORY_KEY);
+        window.localStorage.removeItem(CHAT_RECENT_SEARCH_KEY);
+      } catch {
+        // ignore storage permission / private mode failures
+      }
       toast.success("Account deleted. All associated data has been removed.");
       window.location.href = "/auth";
     } catch (err) {
@@ -175,6 +187,21 @@ export function ProfileResumeEditor({
         toast.error("LinkedIn URL must be a full https://linkedin.com/... link.");
         return;
       }
+      const primaryRoles = splitList(primary);
+      const secondaryRoles = splitList(secondary);
+      const archetypeRoles = splitList(archetypes);
+      if (primaryRoles.length === 0) {
+        toast.error("Primary roles are required.");
+        return;
+      }
+      if (secondaryRoles.length === 0) {
+        toast.error("Secondary roles are required.");
+        return;
+      }
+      if (archetypeRoles.length === 0) {
+        toast.error("Archetypes are required.");
+        return;
+      }
       const payload: Profile = {
         candidate: {
           full_name: fullName.trim() || undefined,
@@ -187,9 +214,9 @@ export function ProfileResumeEditor({
           website: website.trim() || undefined,
         },
         target_roles: {
-          primary: splitList(primary),
-          secondary: splitList(secondary),
-          archetypes: splitList(archetypes),
+          primary: primaryRoles,
+          secondary: secondaryRoles,
+          archetypes: archetypeRoles,
         },
         narrative: {
           one_liner: oneLiner.trim() || undefined,
@@ -263,6 +290,34 @@ export function ProfileResumeEditor({
 
   return (
     <form onSubmit={saveAll} className="flex flex-col gap-6">
+      {cvIsEmpty ? (
+        <Card className="border-amber-300/60 bg-amber-50/50 dark:bg-amber-950/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">
+              Start here: import your resume first
+            </CardTitle>
+            <CardDescription className="space-y-2 text-sm">
+              <p>
+                Your <code className="text-xs">cv.md</code> is empty. Go to{" "}
+                <Link href="/chat" className="underline font-medium">
+                  Chat
+                </Link>
+                , turn on <strong>Resume coach</strong>, upload your DOCX/MD resume,
+                and send this prompt so it updates both{" "}
+                <code className="text-xs">cv.md</code> and{" "}
+                <code className="text-xs">profile.yml</code>.
+              </p>
+              <Textarea
+                readOnly
+                value={resumeCoachImportPrompt}
+                rows={3}
+                className="font-mono text-xs bg-background"
+              />
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      ) : null}
+
       <Tabs defaultValue={defaultTab} className="gap-4">
         <TabsList className="w-fit flex-wrap">
           <TabsTrigger value="resume">Résumé (`cv.md`)</TabsTrigger>
@@ -366,12 +421,14 @@ export function ProfileResumeEditor({
                 value={primary}
                 onChange={setPrimary}
                 placeholder="Senior Backend Engineer"
+                required
               />
               <Field
                 label="Secondary roles (comma-separated)"
                 id="secondary"
                 value={secondary}
                 onChange={setSecondary}
+                required
               />
               <Field
                 label="Archetypes (comma-separated)"
@@ -379,6 +436,7 @@ export function ProfileResumeEditor({
                 value={archetypes}
                 onChange={setArchetypes}
                 placeholder="API platform"
+                required
               />
             </CardContent>
           </Card>

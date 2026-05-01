@@ -14,8 +14,13 @@ import {
   extractHostedHtmlBlock,
   type HostedTailorContext,
 } from "@/lib/hosted-tailor-html";
+import type { Browser } from "puppeteer-core";
 import { htmlToPdfWithBrowser, launchPdfBrowser } from "@/lib/pdf-from-html";
-import { slugTailoredSegment, uploadUserPdf } from "@/lib/tailored-docs-storage";
+import {
+  slugTailoredSegment,
+  uploadUserPdf,
+  uploadUserTailoredHtml,
+} from "@/lib/tailored-docs-storage";
 
 export const dynamic = "force-dynamic";
 
@@ -155,12 +160,92 @@ export async function POST(req: NextRequest) {
 
   const log: string[] = [];
 
-  let browser: Awaited<ReturnType<typeof launchPdfBrowser>> | null = null;
+  const skipPdfEnv = ["1", "true", "yes"].includes(
+    (process.env.APPLYPANDA_SKIP_PDF ?? "").trim().toLowerCase(),
+  );
+  if (skipPdfEnv) {
+    log.push(
+      "ℹ️ APPLYPANDA_SKIP_PDF is set — skipping headless Chrome; saving printable HTML only.",
+    );
+  }
+
+  /** TS flow analysis ignores assignments nested in `saveTailored`; use `.current`. */
+  const pdfBrowserRef: { current: Browser | null } = { current: null };
+
+  /** Save PDF when Chromium works; otherwise upload printable HTML (same basename `.html`). */
+  const saveTailored = async (args: {
+    html: string;
+    pdfStoragePath: string;
+    pdfDisplayName: string;
+    htmlDisplayName: string;
+    kind: "cv" | "cl";
+    metadata: Record<string, unknown>;
+    logTag: string;
+  }): Promise<string> => {
+    const {
+      html,
+      pdfStoragePath,
+      pdfDisplayName,
+      htmlDisplayName,
+      kind,
+      metadata,
+      logTag,
+    } = args;
+    const htmlStoragePath = pdfStoragePath.replace(/\.pdf$/i, ".html");
+
+    const saveHtml = async (reason: string) => {
+      log.push(`→ ${reason} — ${logTag}: saving printable HTML (${htmlDisplayName})`);
+      await uploadUserTailoredHtml({
+        supabase: auth.supabase,
+        userId: uid,
+        storagePath: htmlStoragePath,
+        html,
+        displayName: htmlDisplayName,
+        kind,
+        metadata: {
+          ...metadata,
+          format: "html_printable",
+        },
+      });
+      log.push(`✓ Saved ${logTag} HTML → ${htmlStoragePath}`);
+      return htmlStoragePath;
+    };
+
+    if (skipPdfEnv) {
+      return saveHtml("PDF disabled by env");
+    }
+
+    try {
+      if (!pdfBrowserRef.current) {
+        pdfBrowserRef.current = await launchPdfBrowser();
+        log.push("✓ Headless browser ready");
+      }
+    } catch (e) {
+      return saveHtml(`Headless browser failed (${(e as Error).message})`);
+    }
+
+    try {
+      const pdfBuf = await htmlToPdfWithBrowser(pdfBrowserRef.current, html);
+      await uploadUserPdf({
+        supabase: auth.supabase,
+        userId: uid,
+        storagePath: pdfStoragePath,
+        buffer: pdfBuf,
+        displayName: pdfDisplayName,
+        kind,
+        metadata: { ...metadata, format: "pdf" },
+      });
+      log.push(`✓ Saved ${logTag} PDF → ${pdfStoragePath}`);
+      return pdfStoragePath;
+    } catch (e) {
+      log.push(
+        `⚠️ PDF rendering failed for ${logTag}: ${(e as Error).message}`,
+      );
+      return saveHtml("Falling back after PDF failure");
+    }
+  };
 
   try {
-    browser = await launchPdfBrowser();
-    log.push("✓ Headless browser ready");
-
     let atsStorage: string | null = null;
     let fullStorage: string | null = null;
     let clStorage: string | null = null;
@@ -184,41 +269,33 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      log.push("→ Rendering ATS PDF…");
-      const atsPdf = await htmlToPdfWithBrowser(browser, atsHtml);
-      atsStorage = `${basePath}-ats.pdf`;
-      await uploadUserPdf({
-        supabase: auth.supabase,
-        userId: uid,
-        storagePath: atsStorage,
-        buffer: atsPdf,
-        displayName: `${company} · ${role} · ATS CV.pdf`,
+      atsStorage = await saveTailored({
+        html: atsHtml,
+        pdfStoragePath: `${basePath}-ats.pdf`,
+        pdfDisplayName: `${company} · ${role} · ATS CV.pdf`,
+        htmlDisplayName: `${company} · ${role} · ATS CV.html`,
         kind: "cv",
         metadata: {
           application_num: applicationNum,
           variant: "ats",
           source: "hosted_tailored",
         },
+        logTag: "ATS CV",
       });
-      log.push(`✓ Saved ATS CV → ${atsStorage}`);
 
-      log.push("→ Rendering full-length CV PDF…");
-      const fullPdf = await htmlToPdfWithBrowser(browser, fullHtml);
-      fullStorage = `${basePath}-full.pdf`;
-      await uploadUserPdf({
-        supabase: auth.supabase,
-        userId: uid,
-        storagePath: fullStorage,
-        buffer: fullPdf,
-        displayName: `${company} · ${role} · Full CV.pdf`,
+      fullStorage = await saveTailored({
+        html: fullHtml,
+        pdfStoragePath: `${basePath}-full.pdf`,
+        pdfDisplayName: `${company} · ${role} · Full CV.pdf`,
+        htmlDisplayName: `${company} · ${role} · Full CV.html`,
         kind: "cv",
         metadata: {
           application_num: applicationNum,
           variant: "full",
           source: "hosted_tailored",
         },
+        logTag: "full CV",
       });
-      log.push(`✓ Saved full CV → ${fullStorage}`);
     }
 
     if (kind === "cl" || kind === "both") {
@@ -231,22 +308,18 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      log.push("→ Rendering cover letter PDF…");
-      const clPdf = await htmlToPdfWithBrowser(browser, clHtml);
-      clStorage = `${basePath}-cover.pdf`;
-      await uploadUserPdf({
-        supabase: auth.supabase,
-        userId: uid,
-        storagePath: clStorage,
-        buffer: clPdf,
-        displayName: `${company} · ${role} · Cover letter.pdf`,
+      clStorage = await saveTailored({
+        html: clHtml,
+        pdfStoragePath: `${basePath}-cover.pdf`,
+        pdfDisplayName: `${company} · ${role} · Cover letter.pdf`,
+        htmlDisplayName: `${company} · ${role} · Cover letter.html`,
         kind: "cl",
         metadata: {
           application_num: applicationNum,
           source: "hosted_tailored",
         },
+        logTag: "cover letter",
       });
-      log.push(`✓ Saved cover letter → ${clStorage}`);
     }
 
     const appPatch: Record<string, unknown> = {
@@ -276,7 +349,9 @@ export async function POST(req: NextRequest) {
     }
 
     log.push("");
-    log.push("✅ Done — PDFs are in Documents and this tracker row is updated.");
+    log.push(
+      "✅ Done — files are under Documents / tracker downloads (PDF if Chromium worked; otherwise printable HTML — open → Print → Save as PDF).",
+    );
     return sseFromText(log.join("\n"), 0);
   } catch (e) {
     const msg = (e as Error).message || "Document generation failed";
@@ -285,8 +360,8 @@ export async function POST(req: NextRequest) {
       1,
     );
   } finally {
-    if (browser) {
-      await browser.close().catch(() => {});
+    if (pdfBrowserRef.current) {
+      await pdfBrowserRef.current.close().catch(() => {});
     }
   }
 }

@@ -5,6 +5,8 @@ export const dynamic = "force-dynamic";
 
 const MIME_BY_EXT: Record<string, string> = {
   pdf: "application/pdf",
+  html: "text/html; charset=utf-8",
+  htm: "text/html; charset=utf-8",
   md: "text/markdown; charset=utf-8",
   txt: "text/plain; charset=utf-8",
   json: "application/json",

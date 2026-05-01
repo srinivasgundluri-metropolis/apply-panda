@@ -12,7 +12,7 @@ export function slugTailoredSegment(raw: string): string {
   );
 }
 
-export async function uploadUserPdf(params: {
+type UploadTailoredArtifactParams = {
   supabase: SupabaseClient;
   userId: string;
   storagePath: string;
@@ -20,20 +20,31 @@ export async function uploadUserPdf(params: {
   displayName: string;
   kind: "cv" | "cl";
   metadata: Record<string, unknown>;
-}): Promise<void> {
-  const { supabase, userId, storagePath, buffer, displayName, kind, metadata } =
-    params;
+  contentType: string;
+};
+
+async function uploadTailoredArtifact(params: UploadTailoredArtifactParams) {
+  const {
+    supabase,
+    userId,
+    storagePath,
+    buffer,
+    displayName,
+    kind,
+    metadata,
+    contentType,
+  } = params;
 
   const { error: upErr } = await supabase.storage
     .from("documents")
     .upload(storagePath, buffer, {
-      contentType: "application/pdf",
+      contentType,
       upsert: true,
     });
 
   if (upErr) {
     throw new Error(
-      `PDF upload failed: ${upErr.message}. Ensure Storage policies allow ${userId}/ (see web/supabase/storage-documents-policies.sql).`,
+      `${contentType.includes("pdf") ? "PDF" : "File"} upload failed: ${upErr.message}. Ensure Storage policies allow ${userId}/ (see web/supabase/storage-documents-policies.sql).`,
     );
   }
 
@@ -51,4 +62,43 @@ export async function uploadUserPdf(params: {
     await supabase.storage.from("documents").remove([storagePath]);
     throw new Error(formatPostgrestError(insErr));
   }
+}
+
+/** Tailored ATS/full CV → PDF in private `documents` bucket + row in `documents`. */
+export async function uploadUserPdf(params: {
+  supabase: SupabaseClient;
+  userId: string;
+  storagePath: string;
+  buffer: Buffer;
+  displayName: string;
+  kind: "cv" | "cl";
+  metadata: Record<string, unknown>;
+}): Promise<void> {
+  return uploadTailoredArtifact({
+    ...params,
+    contentType: "application/pdf",
+  });
+}
+
+/** Printable HTML when headless PDF is unavailable (open in browser → Print → Save as PDF). */
+export async function uploadUserTailoredHtml(params: {
+  supabase: SupabaseClient;
+  userId: string;
+  storagePath: string;
+  html: string;
+  displayName: string;
+  kind: "cv" | "cl";
+  metadata: Record<string, unknown>;
+}): Promise<void> {
+  const buffer = Buffer.from(params.html, "utf-8");
+  return uploadTailoredArtifact({
+    supabase: params.supabase,
+    userId: params.userId,
+    storagePath: params.storagePath,
+    buffer,
+    displayName: params.displayName,
+    kind: params.kind,
+    metadata: params.metadata,
+    contentType: "text/html; charset=utf-8",
+  });
 }

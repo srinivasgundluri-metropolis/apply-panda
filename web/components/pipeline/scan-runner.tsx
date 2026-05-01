@@ -36,7 +36,7 @@ export function ScanRunner() {
           <div className="min-w-0 max-w-xl">
             <p className="font-medium text-base">Scan job boards</p>
             <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-              Queries Greenhouse, Ashby, and Lever for every company in your saved board list, applies
+              Queries Greenhouse, Ashby, Lever, and Workday for every company in your saved board list, applies
               your title include/exclude rules, then writes new postings to{" "}
               <strong>Scan results</strong> with status{" "}
               <Badge variant="outline" className="text-[10px] mx-0.5 align-middle">

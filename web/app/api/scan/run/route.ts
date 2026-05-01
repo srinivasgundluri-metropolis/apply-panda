@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Streams portal scan progress as SSE, persists new rows to scan_history.
- * Uses Greenhouse/Ashby/Lever APIs + per-user `profiles.data.portals` only (no generic bundled list).
+ * Uses Greenhouse, Ashby, Lever, Workday CXS APIs + per-user `profiles.data.portals` only (no generic bundled list).
  */
 export async function GET() {
   const auth = await requireApiUser();

@@ -30,7 +30,7 @@ const FEATURES = [
     icon: Search,
     title: "Portal Scanner",
     description:
-      "Hits Greenhouse / Ashby / Lever / Workday public APIs directly with zero LLM cost. Filters offers by your target roles before they hit your tracker.",
+      "Hits Greenhouse, Ashby, Lever, and Workday CXS public JSON endpoints directly with zero LLM cost. Filters offers by your target roles before they hit your tracker.",
   },
   {
     icon: BarChart3,

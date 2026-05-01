@@ -48,11 +48,16 @@ export async function POST(req: NextRequest) {
     const { config, companiesScanned, jobs, titleFilteredTotal, keywordMatchedTotal } =
       await searchPortalJobsWithFilters(cfg, keywords, limit);
     const tf = config.title_filter ?? {};
+    const lf = config.location_filter ?? {};
     const payload: PortalSearchResponse = {
       query: { keywords, limit },
       title_filter: {
         positive: tf.positive ?? [],
         negative: tf.negative ?? [],
+      },
+      location_filter: {
+        positive: lf.positive ?? [],
+        negative: lf.negative ?? [],
       },
       companies_scanned: companiesScanned,
       stats: {

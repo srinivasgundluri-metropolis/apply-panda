@@ -1,5 +1,5 @@
 /**
- * Shared Greenhouse / Ashby / Lever fetch + portals.yml title_filter.
+ * Shared ATS fetch (Greenhouse, Ashby, Lever, Workday CXS) + portals.yml filters.
  * Used by hosted portal scan (persist) and chat portal search (read-only).
  */
 
@@ -27,6 +27,49 @@ export type PortalJob = {
 
 const FETCH_TIMEOUT_MS = 10_000;
 
+/** Workday allows at most 20 rows per CXS POST; cap pages to keep scans bounded. */
+const WORKDAY_PAGE_SIZE = 20;
+const WORKDAY_MAX_JOBS_FETCH = 1000;
+
+export type ParsedWorkdayBoard = {
+  calypsoOrigin: string;
+  tenant: string;
+  siteId: string;
+};
+
+/**
+ * Recognizes `{tenant}.{wd*}myworkdayjobs.com/{siteId}` (optional `locale` prefix before siteId).
+ * Returns metadata for CXS `/wday/cxs/{tenant}/{siteId}/jobs` POST fan-out.
+ */
+export function parseWorkdayCareersUrl(raw: string): ParsedWorkdayBoard | null {
+  const s = raw.trim();
+  if (!s) return null;
+  const urlStr = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+  let u: URL;
+  try {
+    u = new URL(urlStr);
+  } catch {
+    return null;
+  }
+  const host = u.hostname.toLowerCase();
+  const m = host.match(/^([^.]+)\.(wd\d+)\.myworkdayjobs\.com$/);
+  if (!m) return null;
+  const tenant = m[1];
+  const wdCluster = m[2];
+  const calypsoOrigin = `${u.protocol}//${tenant}.${wdCluster}.myworkdayjobs.com`;
+  const parts = u.pathname.split("/").filter(Boolean);
+  if (parts.length === 0) return null;
+  let siteId: string;
+  const maybeLocale = parts[0];
+  if (/^[a-z]{2}-[a-z]{2}$/i.test(maybeLocale) && parts.length >= 2) {
+    siteId = parts[1];
+  } else {
+    siteId = parts[0];
+  }
+  if (!siteId) return null;
+  return { calypsoOrigin, tenant, siteId };
+}
+
 async function fetchJson(url: string): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -39,11 +82,100 @@ async function fetchJson(url: string): Promise<unknown> {
   }
 }
 
-export function detectPortalApi(company: { api?: string; careers_url?: string }) {
+async function postWorkdayJobsPage(
+  calypsoOrigin: string,
+  tenant: string,
+  siteId: string,
+  offset: number,
+): Promise<{ total?: number; jobPostings?: Array<{ title?: string; externalPath?: string; locationsText?: string }> }> {
+  const endpoint = `${calypsoOrigin.replace(/\/$/, "")}/wday/cxs/${encodeURIComponent(tenant)}/${encodeURIComponent(siteId)}/jobs`;
+  const body = {
+    appliedFacets: {},
+    limit: WORKDAY_PAGE_SIZE,
+    offset,
+    searchText: "",
+  };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "Accept-Language": "en-US",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()) as {
+      total?: number;
+      jobPostings?: Array<{ title?: string; externalPath?: string; locationsText?: string }>;
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function parseWorkdayPostingsToJobs(
+  postings: NonNullable<Awaited<ReturnType<typeof postWorkdayJobsPage>>["jobPostings"]>,
+  companyName: string,
+  calypsoOrigin: string,
+  siteId: string,
+): PortalJob[] {
+  const base = calypsoOrigin.replace(/\/$/, "");
+  return postings.map((j) => {
+    const rawPath = String(j.externalPath ?? "");
+    const path = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
+    const url = `${base}/${siteId}${path}`;
+    return {
+      title: j.title ?? "",
+      url,
+      company: companyName,
+      location: j.locationsText ?? "",
+      source: "workday-cxs",
+    };
+  });
+}
+
+async function fetchAllWorkdayJobs(w: ParsedWorkdayBoard, companyName: string): Promise<PortalJob[]> {
+  const first = await postWorkdayJobsPage(w.calypsoOrigin, w.tenant, w.siteId, 0);
+  const totalReported = typeof first.total === "number" ? first.total : 0;
+  const cap = Math.min(totalReported > 0 ? totalReported : WORKDAY_PAGE_SIZE, WORKDAY_MAX_JOBS_FETCH);
+  const all = [...(first.jobPostings ?? [])];
+  const offsets: number[] = [];
+  for (let off = WORKDAY_PAGE_SIZE; off < cap; off += WORKDAY_PAGE_SIZE) {
+    offsets.push(off);
+  }
+  const BATCH = 5;
+  for (let i = 0; i < offsets.length; i += BATCH) {
+    const slice = offsets.slice(i, i + BATCH);
+    const pages = await Promise.all(
+      slice.map((off) => postWorkdayJobsPage(w.calypsoOrigin, w.tenant, w.siteId, off)),
+    );
+    for (const p of pages) {
+      all.push(...(p.jobPostings ?? []));
+    }
+  }
+  return parseWorkdayPostingsToJobs(all, companyName, w.calypsoOrigin, w.siteId);
+}
+
+export type DetectedPortalApi =
+  | { type: "greenhouse"; url: string }
+  | { type: "ashby"; url: string }
+  | { type: "lever"; url: string }
+  | { type: "workday" } & ParsedWorkdayBoard;
+
+export function detectPortalApi(company: { api?: string; careers_url?: string }): DetectedPortalApi | null {
   if (company.api && company.api.includes("greenhouse")) {
     return { type: "greenhouse" as const, url: company.api };
   }
   const url = company.careers_url ?? "";
+  const wd = parseWorkdayCareersUrl(url);
+  if (wd) {
+    return { type: "workday" as const, ...wd };
+  }
   const ashby = url.match(/jobs\.ashbyhq\.com\/([^/?#]+)/);
   if (ashby) {
     return {
@@ -100,15 +232,29 @@ function parseLever(json: unknown, companyName: string): PortalJob[] {
   }));
 }
 
-export function buildTitleFilter(titleFilter: { positive?: string[]; negative?: string[] } | undefined) {
-  const positive = (titleFilter?.positive ?? []).map((k) => k.toLowerCase());
-  const negative = (titleFilter?.negative ?? []).map((k) => k.toLowerCase());
-  return (title: string) => {
-    const lower = title.toLowerCase();
+/** Substring rules: empty `positive` means “allow all”; `negative` always excludes hits. */
+export function buildSubstringTextFilter(filter: {
+  positive?: string[];
+  negative?: string[];
+} | undefined) {
+  const positive = (filter?.positive ?? []).map((k) => k.toLowerCase());
+  const negative = (filter?.negative ?? []).map((k) => k.toLowerCase());
+  return (text: string) => {
+    const lower = text.toLowerCase();
     const hasPositive = positive.length === 0 || positive.some((k) => lower.includes(k));
     const hasNegative = negative.some((k) => lower.includes(k));
     return hasPositive && !hasNegative;
   };
+}
+
+export function buildTitleFilter(titleFilter: { positive?: string[]; negative?: string[] } | undefined) {
+  return buildSubstringTextFilter(titleFilter);
+}
+
+export function buildLocationFilter(
+  locationFilter: { positive?: string[]; negative?: string[] } | undefined,
+) {
+  return buildSubstringTextFilter(locationFilter);
 }
 
 function isValidUserPortals(p: unknown): p is PortalsYamlConfig {
@@ -186,12 +332,13 @@ export interface CollectPortalJobsOpts {
   concurrency?: number;
 }
 
-/** All open roles from configured boards after portals.yml title_filter (no DB). */
+/** All open roles from configured boards after title + optional location substring filters (no DB). */
 export async function collectAllTitleFilteredPortalJobs(
   cfg: PortalsYamlConfig,
   options: CollectPortalJobsOpts = {},
 ): Promise<{ config: PortalsYamlConfig; companiesScanned: number; jobs: PortalJob[] }> {
   const titleFilter = buildTitleFilter(cfg.title_filter);
+  const locationFilter = buildLocationFilter(cfg.location_filter);
   const companyNeedle = (options.companyNameContains ?? "").trim().toLowerCase();
 
   const companies = cfg.tracked_companies ?? [];
@@ -210,14 +357,24 @@ export async function collectAllTitleFilteredPortalJobs(
       chunk.map(async (c) => {
         const api = c._api!;
         try {
-          const json = await fetchJson(api.url);
-          const jobs =
-            api.type === "greenhouse"
-              ? parseGreenhouse(json, c.name ?? "")
-              : api.type === "ashby"
-                ? parseAshby(json, c.name ?? "")
-                : parseLever(json, c.name ?? "");
-          return jobs.filter((j) => j.url && titleFilter(j.title));
+          let jobs: PortalJob[];
+          if (api.type === "workday") {
+            jobs = await fetchAllWorkdayJobs(api, c.name ?? "");
+          } else {
+            const json = await fetchJson(api.url);
+            jobs =
+              api.type === "greenhouse"
+                ? parseGreenhouse(json, c.name ?? "")
+                : api.type === "ashby"
+                  ? parseAshby(json, c.name ?? "")
+                  : parseLever(json, c.name ?? "");
+          }
+          return jobs.filter(
+            (j) =>
+              j.url &&
+              titleFilter(j.title) &&
+              locationFilter(j.location ?? ""),
+          );
         } catch {
           return [];
         }

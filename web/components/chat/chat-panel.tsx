@@ -106,24 +106,32 @@ function buildPortalSearchReply(data: PortalSearchResponse): {
   const neg = data.title_filter.negative.length
     ? data.title_filter.negative.map((x) => `\`${x}\``).join(", ")
     : "_none_";
+  const lfPos = data.location_filter?.positive?.length
+    ? data.location_filter!.positive.map((x) => `\`${x}\``).join(", ")
+    : "_none (all locations)_";
+  const lfNeg = data.location_filter?.negative?.length
+    ? data.location_filter!.negative.map((x) => `\`${x}\``).join(", ")
+    : "_none_";
   const kw = data.query.keywords.trim();
   const lines: string[] = [
-    "**Job board search** (Greenhouse · Ashby · Lever) using your profile **title_filter** rules.",
+    "**Job board search** (Greenhouse · Ashby · Lever · Workday) — profile **title** and **location** rules apply before listing.",
     "",
     `**Title rules:** positive ${pos} · negative ${neg}.`,
     "",
-    kw
-      ? `**Keyword narrow:** _${kw.replace(/_/g, "\\_")}_ — each token (3+ characters) must appear **as a whole word in the job title** (role); company/location are ignored for this step.`
-      : `_No keyword narrow — showing up to **${data.query.limit}** roles that pass the title filter._`,
+    `**Location rules:** ` + `(job location field) · positive ${lfPos} · negative ${lfNeg}.`,
     "",
-    `**Stats:** ${data.companies_scanned} boards · **${data.stats.title_filtered_total}** roles after title rules · **${data.stats.keyword_matched_total}** after keywords · **${data.stats.returned}** shown below.`,
+    kw
+      ? `**Keyword narrow:** _${kw.replace(/_/g, "\\_")}_ — each token (3+ characters) must appear **as a whole word in the job title** (role); this step ignores company names but still runs after profile title/location filters.`
+      : `_No keyword narrow — showing up to **${data.query.limit}** roles that pass your profile filters._`,
+    "",
+    `**Stats:** ${data.companies_scanned} boards · **${data.stats.title_filtered_total}** roles after profile filters · **${data.stats.keyword_matched_total}** after keywords · **${data.stats.returned}** shown below.`,
   ];
   const jobs = data.results;
   if (jobs.length === 0) {
     return {
       content:
         lines.join("\n") +
-        "\n\n_No matches. Try different keywords, or widen title rules under **Profile → ATS job boards**._",
+        "\n\n_No matches. Try different keywords, or widen title/location filters under **Profile → ATS job boards**._",
       jobs: [],
     };
   }
@@ -619,7 +627,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                 <p className="text-sm text-muted-foreground max-w-md mt-1">
                   {resumeCoachMode
                     ? "Describe changes, upload a résumé file (`.docx/.md/.txt`) for conversion, or both — the coach merges into your workspace using your configured model."
-                    : "With **Search job boards** on, your message queries Greenhouse, Ashby, and Lever using the companies and title filters from your profile, then optional keywords — real posting URLs only. Turn it off for tracker, reports, or general chat."}
+                    : "With **Search job boards** on, your message queries Greenhouse, Ashby, Lever, and Workday (where configured) using the companies and title filters from your profile, then optional keywords — real posting URLs only. Turn it off for tracker, reports, or general chat."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 justify-center max-w-2xl mt-2">
@@ -713,7 +721,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               />
               <span className="text-xs text-muted-foreground leading-snug">
                 <span className="font-medium text-foreground">Search job boards first</span> —{" "}
-                Greenhouse, Ashby, and Lever using your profile board list and title filters, then optional
+                Greenhouse, Ashby, Lever, and Workday using your profile board list and title filters, then optional
                 keywords. Off = plain AI chat (tracker, reports, strategy).
               </span>
             </label>

@@ -3,7 +3,7 @@
 /**
  * scan.mjs — Zero-token portal scanner
  *
- * Fetches Greenhouse, Ashby, and Lever APIs directly, applies title
+ * Fetches Greenhouse, Ashby, Lever, and Workday CXS APIs directly; applies title
  * filters from portals.yml, deduplicates against existing history,
  * and appends new offers to pipeline.md + scan-history.tsv.
  *
@@ -32,6 +32,104 @@ mkdirSync('data', { recursive: true });
 const CONCURRENCY = 10;
 const FETCH_TIMEOUT_MS = 10_000;
 
+const WORKDAY_PAGE_SIZE = 20;
+const WORKDAY_MAX_JOBS_FETCH = 1000;
+
+/** @typedef {{ calypsoOrigin: string; tenant: string; siteId: string }} ParsedWorkday */
+
+/** @returns {ParsedWorkday | null} */
+function parseWorkdayCareersUrl(raw) {
+  const s = (raw ?? '').trim();
+  if (!s) return null;
+  const urlStr = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+  let u;
+  try {
+    u = new URL(urlStr);
+  } catch {
+    return null;
+  }
+  const host = u.hostname.toLowerCase();
+  const m = host.match(/^([^.]+)\.(wd\d+)\.myworkdayjobs\.com$/);
+  if (!m) return null;
+  const tenant = m[1];
+  const wdCluster = m[2];
+  const calypsoOrigin = `${u.protocol}//${tenant}.${wdCluster}.myworkdayjobs.com`;
+  const parts = u.pathname.split('/').filter(Boolean);
+  if (parts.length === 0) return null;
+  const maybeLocale = parts[0];
+  let siteId;
+  if (/^[a-z]{2}-[a-z]{2}$/i.test(maybeLocale) && parts.length >= 2) siteId = parts[1];
+  else siteId = parts[0];
+  if (!siteId) return null;
+  return { calypsoOrigin, tenant, siteId };
+}
+
+/**
+ * @param {ParsedWorkday} w
+ * @param {string} companyName
+ * @returns {Promise<Array<{title: string; url: string; company: string; location: string; source?: string }>>}
+ */
+async function fetchAllWorkdayJobs(w, companyName) {
+  const base = w.calypsoOrigin.replace(/\/$/, '');
+  const endpointPrefix = `${base}/wday/cxs/${encodeURIComponent(w.tenant)}/${encodeURIComponent(w.siteId)}/jobs`;
+
+  async function fetchPage(offset) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(endpointPrefix, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'Accept-Language': 'en-US',
+        },
+        body: JSON.stringify({
+          appliedFacets: {},
+          limit: WORKDAY_PAGE_SIZE,
+          offset,
+          searchText: '',
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  const first = await fetchPage(0);
+  const totalReported = typeof first.total === 'number' ? first.total : 0;
+  const cap = Math.min(totalReported > 0 ? totalReported : WORKDAY_PAGE_SIZE, WORKDAY_MAX_JOBS_FETCH);
+
+  /** @type {Array<{title?: string; externalPath?: string; locationsText?: string}>} */
+  const all = [...(first.jobPostings ?? [])];
+
+  /** @type {number[]} */
+  const offsets = [];
+  for (let off = WORKDAY_PAGE_SIZE; off < cap; off += WORKDAY_PAGE_SIZE) offsets.push(off);
+
+  const BATCH = 5;
+  for (let i = 0; i < offsets.length; i += BATCH) {
+    const slice = offsets.slice(i, i + BATCH);
+    const pages = await Promise.all(slice.map((off) => fetchPage(off)));
+    for (const p of pages) all.push(...(p.jobPostings ?? []));
+  }
+
+  return all.map(j => {
+    const rawPath = String(j.externalPath ?? '');
+    const path = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+    return {
+      title: j.title ?? '',
+      url: `${base}/${w.siteId}${path}`,
+      company: companyName,
+      location: j.locationsText ?? '',
+      source: 'workday-cxs',
+    };
+  });
+}
+
 // ── API detection ───────────────────────────────────────────────────
 
 function detectApi(company) {
@@ -41,6 +139,9 @@ function detectApi(company) {
   }
 
   const url = company.careers_url || '';
+
+  const wd = parseWorkdayCareersUrl(url);
+  if (wd) return { type: 'workday', ...wd };
 
   // Ashby
   const ashbyMatch = url.match(/jobs\.ashbyhq\.com\/([^/?#]+)/);
@@ -104,7 +205,11 @@ function parseLever(json, companyName) {
   }));
 }
 
-const PARSERS = { greenhouse: parseGreenhouse, ashby: parseAshby, lever: parseLever };
+const PARSERS = {
+  greenhouse: parseGreenhouse,
+  ashby: parseAshby,
+  lever: parseLever,
+};
 
 // ── Fetch with timeout ──────────────────────────────────────────────
 
@@ -290,10 +395,15 @@ async function main() {
   const errors = [];
 
   const tasks = targets.map(company => async () => {
-    const { type, url } = company._api;
+    const api = company._api;
     try {
-      const json = await fetchJson(url);
-      const jobs = PARSERS[type](json, company.name);
+      let jobs;
+      if (api.type === 'workday') {
+        jobs = await fetchAllWorkdayJobs(api, company.name);
+      } else {
+        const json = await fetchJson(api.url);
+        jobs = PARSERS[api.type](json, company.name);
+      }
       totalFound += jobs.length;
 
       for (const job of jobs) {
@@ -310,10 +420,10 @@ async function main() {
           totalDupes++;
           continue;
         }
-        // Mark as seen to avoid intra-scan dupes
         seenUrls.add(job.url);
         seenCompanyRoles.add(key);
-        newOffers.push({ ...job, source: `${type}-api` });
+        const source = job.source || `${api.type}-api`;
+        newOffers.push({ ...job, source });
       }
     } catch (err) {
       errors.push({ company: company.name, error: err.message });

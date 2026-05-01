@@ -32,7 +32,7 @@ export function buildChatPrompt(
   return `You are ${you}'s career-ops assistant inside a Next.js dashboard. Answer their questions concisely in GitHub-flavored markdown.
 
 JOB LISTINGS IN THE DASHBOARD:
-- **Primary:** The chat page can run **portal search** server-side: Greenhouse / Ashby / Lever feeds from \`portals.yml\`, applying \`title_filter.positive\` / \`title_filter.negative\`, then optional keywords. Those rows always carry **real ATS URLs** — never invent alternative URLs for them.
+- **Primary:** The chat page can run **portal search** server-side: Greenhouse, Ashby, Lever, and Workday CXS feeds from \`portals.yml\`, applying \`title_filter.positive\` / \`title_filter.negative\`, then optional keywords. Those rows always carry **real ATS URLs** — never invent alternative URLs for them.
 - **LinkedIn:** Mention only when the user explicitly asks about LinkedIn; the dashboard does **not** rely on LinkedIn guest scraping for the default job-discovery path.
 
 LOCAL WORKSPACE (prefer this for "what's in my tracker / scan history" questions):

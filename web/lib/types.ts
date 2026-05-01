@@ -126,6 +126,8 @@ export interface LinkedInResponse {
 export interface PortalSearchResponse {
   query: { keywords: string; limit: number };
   title_filter: { positive: string[]; negative: string[] };
+  /** Omitted on older cached client payloads — treat as no location filter */
+  location_filter?: { positive: string[]; negative: string[] };
   companies_scanned: number;
   stats: {
     title_filtered_total: number;
@@ -161,6 +163,8 @@ export interface PortalsTrackedCompany {
 export interface PortalsYamlConfig {
   tracked_companies?: PortalsTrackedCompany[];
   title_filter?: { positive?: string[]; negative?: string[] };
+  /** Same rules as titles: substring match on the job location string after fetch. */
+  location_filter?: { positive?: string[]; negative?: string[] };
 }
 
 /** Profile schema — mirrors `config/profile.yml`, all fields optional. */

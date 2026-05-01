@@ -12,6 +12,70 @@ export type AdzunaPortalJob = {
   postedAt?: number;
 };
 
+function isHttpUrl(s: string): boolean {
+  try {
+    const u = new URL(s);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function isAdzunaLandingUrl(s: string): boolean {
+  try {
+    const u = new URL(s);
+    return (
+      /(^|\.)adzuna\./i.test(u.hostname) &&
+      /\/land\/ad\//i.test(u.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function decodedUrlParamCandidate(raw: string): string | null {
+  try {
+    const u = new URL(raw);
+    const keys = ["url", "dest", "destination", "target", "redirect"];
+    for (const k of keys) {
+      const v = u.searchParams.get(k);
+      if (!v) continue;
+      const decoded = decodeURIComponent(v);
+      if (isHttpUrl(decoded)) return decoded;
+      if (isHttpUrl(v)) return v;
+    }
+  } catch {
+    // noop
+  }
+  return null;
+}
+
+function extractBestJobUrl(hit: Record<string, unknown>): string {
+  const rawCandidates = [
+    hit.url,
+    hit.source_url,
+    hit.apply_url,
+    hit.target_url,
+    hit.redirect_url,
+  ]
+    .map((x) => (typeof x === "string" ? x.trim() : ""))
+    .filter(Boolean);
+
+  for (const c of rawCandidates) {
+    if (!isHttpUrl(c)) continue;
+    if (!isAdzunaLandingUrl(c)) return c;
+  }
+  for (const c of rawCandidates) {
+    if (!isHttpUrl(c)) continue;
+    const decoded = decodedUrlParamCandidate(c);
+    if (decoded && !isAdzunaLandingUrl(decoded)) return decoded;
+  }
+  for (const c of rawCandidates) {
+    if (isHttpUrl(c)) return c;
+  }
+  return "";
+}
+
 export function isAdzunaJobSearchConfigured(): boolean {
   return Boolean(
     process.env.ADZUNA_APP_ID?.trim() &&
@@ -163,7 +227,7 @@ export async function fetchAdzunaPortalJobs(
 
       for (const hit of results) {
         const title = String(hit.title ?? "").trim();
-        const redirect = String(hit.redirect_url ?? "").trim();
+        const bestUrl = extractBestJobUrl(hit);
         const compRaw = hit.company;
         let company =
           compRaw &&
@@ -180,11 +244,11 @@ export async function fetchAdzunaPortalJobs(
           if (Number.isFinite(t)) postedAt = t;
         }
 
-        if (!redirect || !title || seenUrl.has(redirect)) continue;
-        seenUrl.add(redirect);
+        if (!bestUrl || !title || seenUrl.has(bestUrl)) continue;
+        seenUrl.add(bestUrl);
         out.push({
           title,
-          url: redirect,
+          url: bestUrl,
           company: company || "Employer",
           location,
           source: "adzuna",

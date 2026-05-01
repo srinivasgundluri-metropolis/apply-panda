@@ -389,6 +389,39 @@ export function assertHostedScanHasTitleOrLocation(cfg: PortalsYamlConfig) {
   }
 }
 
+function toStringList(v: unknown): string[] {
+  if (Array.isArray(v)) {
+    return v
+      .map((x) => (typeof x === "string" ? x.trim() : ""))
+      .filter(Boolean);
+  }
+  if (typeof v === "string" && v.trim()) return [v.trim()];
+  return [];
+}
+
+function fallbackPortalsFromTargetRoles(
+  profileData: Record<string, unknown>,
+): PortalsYamlConfig | null {
+  const targetRoles =
+    profileData.target_roles &&
+    typeof profileData.target_roles === "object" &&
+    !Array.isArray(profileData.target_roles)
+      ? (profileData.target_roles as Record<string, unknown>)
+      : null;
+  if (!targetRoles) return null;
+
+  const primary = toStringList(targetRoles.primary);
+  const secondary = toStringList(targetRoles.secondary);
+  const positive = [...new Set([...primary, ...secondary])];
+  if (positive.length === 0) return null;
+
+  return {
+    tracked_companies: [],
+    company_filter: "",
+    title_filter: { positive },
+  };
+}
+
 function isValidUserPortals(p: unknown): p is PortalsYamlConfig {
   if (!p || typeof p !== "object" || Array.isArray(p)) return false;
   const cfg = p as PortalsYamlConfig;
@@ -418,13 +451,17 @@ export async function loadPortalsConfigResolved(
   if (error || !data?.data) {
     throw new UserPortalsConfigMissingError();
   }
-  const portals = data.data.portals;
+  const rawProfile = data.data as Record<string, unknown>;
+  const portals = rawProfile.portals;
+  const fallback = fallbackPortalsFromTargetRoles(rawProfile);
   if (portals === null || portals === undefined) {
+    if (fallback) return fallback;
     throw new UserPortalsConfigMissingError();
   }
   if (!isValidUserPortals(portals)) {
+    if (fallback) return fallback;
     throw new UserPortalsConfigMissingError(
-      "profiles.data.portals must include at least one title phrase or location line. Fix this under Profile → ATS job targeting.",
+      "profiles.data.portals must include at least one title phrase or location line (or set target_roles.primary/secondary). Fix this under Profile → ATS job targeting.",
     );
   }
   return portals;

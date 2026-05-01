@@ -60,6 +60,32 @@ function stripHtml(html: string): string {
   return body;
 }
 
+function isAdzunaLandingUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return /(^|\.)adzuna\./i.test(u.hostname) && /\/land\/ad\//i.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function decodeAdzunaDestination(raw: string): string | null {
+  try {
+    const u = new URL(raw);
+    const keys = ["url", "dest", "destination", "target", "redirect"];
+    for (const k of keys) {
+      const v = u.searchParams.get(k);
+      if (!v) continue;
+      const decoded = decodeURIComponent(v);
+      if (/^https?:\/\//i.test(decoded)) return decoded;
+      if (/^https?:\/\//i.test(v)) return v;
+    }
+  } catch {
+    // noop
+  }
+  return null;
+}
+
 export interface FetchJdResult {
   ok: boolean;
   text: string;
@@ -201,6 +227,12 @@ export async function fetchJobDescription(
       timeoutMs,
     });
   }
+  if (isAdzunaLandingUrl(url)) {
+    const decoded = decodeAdzunaDestination(url);
+    if (decoded) {
+      return fetchJobDescription(decoded, timeoutMs);
+    }
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -211,6 +243,14 @@ export async function fetchJobDescription(
     });
     clearTimeout(timer);
     if (!resp.ok) {
+      if (isAdzunaLandingUrl(url) && resp.status === 403) {
+        return {
+          ok: false,
+          text: "",
+          error:
+            "Adzuna landing URL blocked server fetch (403). Re-run scan to capture destination URLs directly, then evaluate from those links.",
+        };
+      }
       return {
         ok: false,
         text: "",

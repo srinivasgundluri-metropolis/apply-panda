@@ -198,6 +198,12 @@ export function ProfileResumeEditor({
       const portalsFromForm = atsBoardsRef.current?.getConfig() ?? null;
       if (portalsFromForm) {
         payload.portals = portalsFromForm;
+      } else {
+        /**
+         * Allow explicit clear of scan-targeting config; backend scanner will
+         * fallback to target_roles.primary/secondary when portals titles are empty.
+         */
+        payload.portals = null;
       }
 
       const resProfile = await fetch("/api/profile", {

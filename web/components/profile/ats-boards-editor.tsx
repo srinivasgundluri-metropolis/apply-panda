@@ -773,8 +773,7 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
           </div>
           <p className="text-sm text-muted-foreground">
             Optional hints layered on titles. Matching uses the ATS &quot;location&quot; field (substring,
-            case-insensitive). You need at least one title line or one location include so we don&apos;t run
-            without a target.
+            case-insensitive). If you leave titles empty here, scan falls back to your profile target roles.
           </p>
           <Select
             value={locationPreset}

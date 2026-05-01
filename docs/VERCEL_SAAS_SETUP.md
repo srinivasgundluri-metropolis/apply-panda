@@ -23,9 +23,10 @@ Set these in Vercel Project Settings -> Environment Variables:
 - `APPLYPANDA_ALLOWED_EMAILS` (comma-separated allowlist for access control)
 - `APPLYPANDA_LOCKDOWN` (optional, set `true` to force global 503 maintenance mode)
 - `APPLYPANDA_SKIP_PDF` (optional, `1` / `true` / `yes` — never start Chromium; tailor flow uploads **printable HTML** only; use when serverless PDF stays broken)
-- `APPLYPANDA_SKIP_DOCX` (optional — skip **`html-to-docx`** conversion; tracker won’t show Word buttons)
+- `APPLYPANDA_SKIP_DOCX` (optional — skip `**html-to-docx`** conversion; tracker won’t show Word buttons)
 
 New Supabase installs get `applications.cv_ats_docx_path`, `cv_full_docx_path`, `cl_docx_path` from `web/supabase/schema.sql`. **Existing** projects: run `web/supabase/alter-applications-docx-paths.sql` once in the SQL editor.
+
 - `SMTP_HOST` (optional)
 - `SMTP_PORT` (optional, default 587)
 - `SMTP_SECURE` (optional, `true`/`false`)
@@ -36,28 +37,36 @@ New Supabase installs get `applications.cv_ats_docx_path`, `cv_full_docx_path`, 
 ## 3) Deployment
 
 - Framework preset: Next.js
-- Root directory: **`web`** (required — the app and `pnpm-lock.yaml` live here)
-- Install command: **leave empty** (Vercel auto-detects **pnpm** from `web/pnpm-lock.yaml`). Do **not** override with `npm install` unless you also commit **`web/package-lock.json`** — otherwise installs ignore the lockfile and can diverge from local.
+- Root directory: `**web`** (required — the app and `pnpm-lock.yaml` live here)
+- Install command: **leave empty** (Vercel auto-detects **pnpm** from `web/pnpm-lock.yaml`). Do **not** override with `npm install` unless you also commit `**web/package-lock.json`** — otherwise installs ignore the lockfile and can diverge from local.
 - Build command: **leave empty** (`pnpm run build` / default `next build`), or explicitly `pnpm run build`
 
-Common reasons Vercel fails while **`cd web && pnpm run build` works locally:**
+Common reasons Vercel fails while `**cd web && pnpm run build` works locally:**
 
 1. **Root directory is the repo root** — build runs career-ops `package.json` (no Next.js) or skips `web` files; tenant isolation then fails missing `app/api/...`.
 2. **Install command forced to npm** — no committed `package-lock.json` → different dependency tree vs `pnpm-lock.yaml`.
-3. **Custom build** runs something that does not exist in `web/package.json` (for example **`typecheck`** on an old revision without that script).
+3. **Custom build** runs something that does not exist in `web/package.json` (for example `**typecheck`** on an old revision without that script).
 
-The `web/package.json` field **`packageManager`** pins pnpm via Corepack for consistent CI installs.
+The `web/package.json` field `**packageManager**` pins pnpm via Corepack for consistent CI installs.
 
-**Tailored documents** (`/api/docs/generate`): **tries PDF first** (`puppeteer-core` + `@sparticuz/chromium` on deployed Linux `preview`|`production`). **If Chromium fails to start or `page.pdf()` throws, the route automatically saves printable `.html` to the same storage paths (`.pdf` → `.html`), updates the tracker, and returns exit code 0** — open the file → **Print → Save as PDF**. Set **`APPLYPANDA_SKIP_PDF`** to skip Chromium entirely. The Sparticuz resolver passes an explicit **`node_modules/@sparticuz/chromium/bin`** path (Next bundles break Sparticuz’s default `__dirname`). **`web/vercel.json`** sets **120s** `maxDuration` for this route. On **Fluid / Active CPU** billing, per-function **`memory` in `vercel.json` is ignored** — configure memory (and related limits) in the Vercel project **Functions** UI instead; Chromium PDFs need enough provisioned memory or they OOM. **`vercel dev`** is detected via `VERCEL_REGION=dev1` and/or missing preview/production env — install **Chrome**, **Edge**, or **Brave** locally, or set **`PUPPETEER_EXECUTABLE_PATH`**. If you copied hosted env vars into Linux dev and the wrong Chromium runs, use **`APPLYPANDA_FORCE_LOCAL_CHROME=1`**. If launch still fails in production on **ARM** serverless regions, Sparticuz’s current build is aimed at **x86** Lambda-style runtimes — pick an x86 region or an alternate PDF pipeline.
+### Build shows “Failed” but no obvious error line
+
+1. **Expand every section** in the deployment (not only **Building**): **Collating**, **Uploading**, **Assigning domains**, etc. Vercel often surfaces the real failure there.
+2. **Download logs** (deployment menu → **Download Build Logs**) and search for `error`, `failed`, `Killed`, `137`, `ENOMEM`, `EACCES`, `ENOENT`.
+3. In **Project → Settings → Environment Variables**, turn **on** [access to system environment variables](https://vercel.com/docs/environment-variables/system-environment-variables) if it is off. Some builds behave oddly when `VERCEL_*` metadata is missing during install/build.
+4. **Redeploy without build cache** once to rule out a bad cache layer.
+5. Confirm the log shows `**[apply-panda] next build starting`** then `**[apply-panda] next build finished ok**` (markers from `web/package.json` `build` script). If the first appears but not the second, the failure is inside `**next build**`; if the second appears, the failure is **after** Next (upload / Vercel packaging).
+
+**Tailored documents** (`/api/docs/generate`): **tries PDF first** (`puppeteer-core` + `@sparticuz/chromium` on deployed Linux `preview`|`production`). **If Chromium fails to start or `page.pdf()` throws, the route automatically saves printable `.html` to the same storage paths (`.pdf` → `.html`), updates the tracker, and returns exit code 0** — open the file → **Print → Save as PDF**. Set `**APPLYPANDA_SKIP_PDF`** to skip Chromium entirely. The Sparticuz resolver passes an explicit `**node_modules/@sparticuz/chromium/bin**` path (Next bundles break Sparticuz’s default `__dirname`). `**web/vercel.json**` sets **120s** `maxDuration` for this route. On **Fluid / Active CPU** billing, per-function `**memory` in `vercel.json` is ignored** — configure memory (and related limits) in the Vercel project **Functions** UI instead; Chromium PDFs need enough provisioned memory or they OOM. `**vercel dev`** is detected via `VERCEL_REGION=dev1` and/or missing preview/production env — install **Chrome**, **Edge**, or **Brave** locally, or set `**PUPPETEER_EXECUTABLE_PATH`**. If you copied hosted env vars into Linux dev and the wrong Chromium runs, use `**APPLYPANDA_FORCE_LOCAL_CHROME=1**`. If launch still fails in production on **ARM** serverless regions, Sparticuz’s current build is aimed at **x86** Lambda-style runtimes — pick an x86 region or an alternate PDF pipeline.
 
 **PDF troubleshooting (step-by-step):**
 
-1. While signed in to the dashboard, open **`/api/docs/pdf-probe`** on the same deployment (or run `pnpm dev`, sign in locally, hit `http://localhost:3000/api/docs/pdf-probe`).
-2. Copy the JSON. If **`diagnostics.sparticuzBinPresent`** is false on production, `@sparticuz/chromium/bin` wasn’t deployed — redeploy after `next.config.ts` **`outputFileTracingIncludes`** (already in repo) picks up **`bin/**/*.br`**.
-3. If **`bundledChromium`** is false but you meant to use hosted PDFs, confirm you’re hitting **deployed** Vercel (`VERCEL_ENV` should be **`preview`** or **`production`** in that JSON).
-4. **Local:** Install **Chrome**, **Edge**, or **Brave**, or set **`PUPPETEER_EXECUTABLE_PATH`** to the executable; macOS Spotlight path is often **`/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`**.
+1. While signed in to the dashboard, open `**/api/docs/pdf-probe`** on the same deployment (or run `pnpm dev`, sign in locally, hit `http://localhost:3000/api/docs/pdf-probe`).
+2. Copy the JSON. If `**diagnostics.sparticuzBinPresent**` is false on production, `@sparticuz/chromium/bin` wasn’t deployed — redeploy after `next.config.ts` `**outputFileTracingIncludes**` (already in repo) picks up `**bin/**/*.br**`.
+3. If `**bundledChromium**` is false but you meant to use hosted PDFs, confirm you’re hitting **deployed** Vercel (`VERCEL_ENV` should be `**preview`** or `**production**` in that JSON).
+4. **Local:** Install **Chrome**, **Edge**, or **Brave**, or set `**PUPPETEER_EXECUTABLE_PATH`** to the executable; macOS Spotlight path is often `**/Applications/Google Chrome.app/Contents/MacOS/Google Chrome**`.
 5. **Hosted:** Give the generate route **enough memory in Vercel dashboard** (Fluid Compute ignores `memory` in `vercel.json`). Hobby may still be too tight for Chromium. Prefer **Washington / classic x86** regions over ARM-only setups for Sparticuz.
-6. **Workaround offline:** Generate CVs locally with **`node generate-pdf.mjs`** against your `cv.md` / HTML (career-ops CLI), then upload artifacts manually until serverless Chromium is sorted.
+6. **Workaround offline:** Generate CVs locally with `**node generate-pdf.mjs`** against your `cv.md` / HTML (career-ops CLI), then upload artifacts manually until serverless Chromium is sorted.
 
 ## 4) Smoke checklist
 
@@ -75,3 +84,4 @@ The `web/package.json` field **`packageManager`** pins pnpm via Corepack for con
 - Keep storage bucket private; serve files through authenticated API routes.
 - Do not expose service role keys to browser code.
 - Deploy gate: `npm run build` now executes `verify:tenant-isolation` first. If isolation checks fail, build (and deploy) fails.
+

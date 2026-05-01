@@ -5,7 +5,7 @@
   "packageManager": "pnpm@10.28.0",
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/tenant-isolation-check.mjs && next build",
+    "build": "node scripts/tenant-isolation-check.mjs && node -e \"console.log('[apply-panda] next build starting')\" && next build && node -e \"console.log('[apply-panda] next build finished ok')\"",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",

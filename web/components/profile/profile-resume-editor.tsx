@@ -32,6 +32,8 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import { DEFAULT_PORTAL_CATALOG_SIZE } from "@/lib/default-portal-catalog";
+import { HOSTED_SCAN_MATCH_LIMIT } from "@/lib/portal-scan";
 import type { Profile } from "@/lib/types";
 import {
   AtsBoardsEditor,
@@ -394,13 +396,13 @@ export function ProfileResumeEditor({
               <CardTitle>Scan targeting</CardTitle>
               <CardDescription className="space-y-2 text-sm leading-relaxed">
                 <p>
-                  Set <strong>job titles</strong> and <strong>locations</strong> to match—we scan about four
-                  dozen curated Greenhouse/Ashby/Lever boards automatically and save the newest 100 postings
-                  that fit (substring rules on ATS title &amp; location text). Stored privately with your profile
-                  and powers <strong>Chat → search job boards</strong> and{" "}
-                  <strong>Pipeline → Scan job boards</strong>.
+                  Set <strong>titles</strong> and <strong>locations</strong>—we poll{" "}
+                  <strong>{DEFAULT_PORTAL_CATALOG_SIZE}</strong> Greenhouse/Ashby/Lever boards by default,
+                  optionally narrow boards by employer-name substring, then keep the newest{" "}
+                  <strong>{HOSTED_SCAN_MATCH_LIMIT}</strong> postings that fit. Saves with your profile for{" "}
+                  <strong>Chat → search job boards</strong> and <strong>Pipeline → Scan job boards</strong>.
                 </p>
-                <p>No employer URLs to paste; optional title excludes trim noise.</p>
+                <p>Optional employer substring filter only (not a global company search); optional title excludes.</p>
               </CardDescription>
             </CardHeader>
             <CardContent>

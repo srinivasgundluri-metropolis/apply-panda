@@ -86,7 +86,7 @@ export async function runGeminiPromptWithFallback(
   throw lastError ?? new Error("LLM request failed across all configured models.");
 }
 
-export function sseFromText(text: string) {
+export function sseFromText(text: string, exitCode: number = 0) {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const enc = new TextEncoder();
@@ -96,7 +96,7 @@ export function sseFromText(text: string) {
         );
       }
       controller.enqueue(
-        enc.encode(`data: ${JSON.stringify({ type: "done", exitCode: 0 })}\n\n`),
+        enc.encode(`data: ${JSON.stringify({ type: "done", exitCode })}\n\n`),
       );
       controller.close();
     },

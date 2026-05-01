@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { DEFAULT_PORTAL_CATALOG_SIZE } from "@/lib/default-portal-catalog";
 import { Info, Loader2, Search } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,10 @@ export function ScanRunner() {
           >
             Profile → Scan targeting
           </Link>
-          first. Each run scans the curated ATS directory, keeps matches that fit your filters, ranks them by recency when the ATS publishes dates, and saves up to 100 newest URLs to Scan results (skipping ones you already stored).
+          . By default we hit every board in the hosted catalog ({DEFAULT_PORTAL_CATALOG_SIZE} employers); add an
+          optional employer-name filter
+          there if you only want specific companies. Each run ranks matches by recency when the ATS exposes dates
+          and saves up to 100 newest URLs to Scan results (skipping ones you already stored).
         </p>
       </div>
       <Card className="px-6 py-5 gap-3">

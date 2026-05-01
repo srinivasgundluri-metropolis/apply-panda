@@ -65,8 +65,12 @@ export async function POST(req: NextRequest) {
       await searchPortalJobsWithFilters(cfg, keywords, limit);
     const tf = config.title_filter ?? {};
     const lf = config.location_filter ?? {};
+    const cf =
+      typeof config.company_filter === "string" && config.company_filter.trim()
+        ? config.company_filter.trim()
+        : undefined;
     const payload: PortalSearchResponse = {
-      query: { keywords, limit },
+      query: { keywords, limit, ...(cf ? { company_filter: cf } : {}) },
       title_filter: {
         positive: tf.positive ?? [],
         negative: tf.negative ?? [],

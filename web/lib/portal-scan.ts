@@ -340,8 +340,8 @@ function positiveLineCount(lines: string[] | undefined): number {
 }
 
 /**
- * Hosted scans always pull from ApplyPanda’s built-in ATS board directory ({@link defaultCatalogCopy}).
- * Per-user employer rows in `profiles.data.portals` are ignored so targeting stays titles + locations only.
+ * Hosted scans always pull from ApplyPanda’s built-in ATS directory ({@link defaultCatalogCopy}).
+ * Saved `tracked_companies` on the profile is ignored for fetch volume; optional `company_filter` still narrows which catalog boards run.
  */
 export function mergeUserPortalsWithDefaultCatalog(cfg: PortalsYamlConfig): PortalsYamlConfig {
   return { ...cfg, tracked_companies: defaultCatalogCopy() };
@@ -361,6 +361,11 @@ function isValidUserPortals(p: unknown): p is PortalsYamlConfig {
   if (!p || typeof p !== "object" || Array.isArray(p)) return false;
   const cfg = p as PortalsYamlConfig;
   if (cfg.tracked_companies !== undefined && !Array.isArray(cfg.tracked_companies)) return false;
+  if (
+    cfg.company_filter !== undefined &&
+    (typeof cfg.company_filter !== "string" || cfg.company_filter.length > 200)
+  )
+    return false;
   const tp = positiveLineCount(cfg.title_filter?.positive);
   const lp = positiveLineCount(cfg.location_filter?.positive);
   return tp > 0 || lp > 0;
@@ -447,6 +452,13 @@ export interface CollectPortalJobsOpts {
   concurrency?: number;
 }
 
+/** Options derived from `profiles.data.portals` (profile `company_filter` narrows the catalog). */
+export function hostedScanCollectOptions(cfg: PortalsYamlConfig): CollectPortalJobsOpts {
+  const raw = cfg.company_filter;
+  const needle = typeof raw === "string" ? raw.trim() : "";
+  return { companyNameContains: needle ? needle : null };
+}
+
 /** All open roles from configured boards after title + optional location substring filters (no DB). */
 export async function collectAllTitleFilteredPortalJobs(
   cfg: PortalsYamlConfig,
@@ -456,7 +468,11 @@ export async function collectAllTitleFilteredPortalJobs(
   const scanCfg = mergeUserPortalsWithDefaultCatalog(cfg);
   const titleFilter = buildTitleFilter(scanCfg.title_filter);
   const locationFilter = buildLocationFilter(scanCfg.location_filter);
-  const companyNeedle = (options.companyNameContains ?? "").trim().toLowerCase();
+  const opts: CollectPortalJobsOpts = {
+    ...hostedScanCollectOptions(cfg),
+    ...options,
+  };
+  const companyNeedle = (opts.companyNameContains ?? "").trim().toLowerCase();
 
   const companies = scanCfg.tracked_companies ?? [];
   const targets = companies
@@ -464,6 +480,15 @@ export async function collectAllTitleFilteredPortalJobs(
     .filter((c) => !companyNeedle || (c.name ?? "").toLowerCase().includes(companyNeedle))
     .map((c) => ({ ...c, _api: detectPortalApi(c) }))
     .filter((c) => c._api !== null);
+
+  if (targets.length === 0) {
+    const rawCf = typeof cfg.company_filter === "string" ? cfg.company_filter.trim() : "";
+    throw new UserPortalsConfigMissingError(
+      rawCf
+        ? `No employer boards matched company filter "${rawCf}". Shorten or clear it under Profile → Scan targeting.`
+        : "No fetchable ATS boards resolved (unexpected).",
+    );
+  }
 
   const concurrency = Math.max(1, Math.min(12, options.concurrency ?? 8));
   const collected: PortalJob[] = [];

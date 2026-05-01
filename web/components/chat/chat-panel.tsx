@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Send, Loader2, Bot, UserRound, Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
@@ -114,9 +115,16 @@ function buildPortalSearchReply(data: PortalSearchResponse): {
     ? data.location_filter!.negative.map((x) => `\`${x}\``).join(", ")
     : "_none_";
   const kw = data.query.keywords.trim();
+  const cf = data.query.company_filter?.trim();
   const lines: string[] = [
     "**Job board search** (Greenhouse · Ashby · Lever · Workday) — profile **title** and **location** rules apply before listing.",
     "",
+    ...(cf?.length
+      ? [
+          `**Employer/board filter:** _${cf.replace(/_/g, "\\_")}_ — only boards in our catalog whose name contains this substring are queried.`,
+          "",
+        ]
+      : []),
     `**Title rules:** positive ${pos} · negative ${neg}.`,
     "",
     `**Location rules:** ` + `(job location field) · positive ${lfPos} · negative ${lfNeg}.`,
@@ -956,6 +964,7 @@ function Bubble({ message, onEvaluate, live }: BubbleProps) {
 }
 
 function InlineEval({ job }: { job: LinkedInResult }) {
+  const router = useRouter();
   const [jdReady, setJdReady] = React.useState(false);
   const [jdText, setJdText] = React.useState<string | null>(null);
   const [jdError, setJdError] = React.useState<string | null>(null);
@@ -1009,6 +1018,9 @@ function InlineEval({ job }: { job: LinkedInResult }) {
       url="/api/eval/stream"
       body={{ jdText, sourceUrl: job.url }}
       label={`Evaluating ${job.company}`}
+      onDone={(_txt, exit) => {
+        if (exit === 0) router.refresh();
+      }}
     />
   );
 }

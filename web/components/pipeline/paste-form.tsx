@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, Play, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
@@ -18,11 +19,11 @@ import { SseStream } from "@/components/sse-stream";
  *      the cleaned text along with the original URL for verification.
  *   2. Pasted JD text (with optional URL) → straight to the agent.
  *
- * The eval stream renders below; on completion, the user gets a toast and
- * the form resets. We intentionally do NOT auto-redirect — the user
- * should see the report path / score before navigating.
+ * The eval stream renders below; on completion the client refreshes RSC data
+ * and shows a toast. The streamed output includes tracker/report confirmation.
  */
 export function PasteForm() {
+  const router = useRouter();
   const [url, setUrl] = React.useState("");
   const [jdText, setJdText] = React.useState("");
   const [fetching, setFetching] = React.useState(false);
@@ -68,7 +69,8 @@ export function PasteForm() {
   const onDone = (_full: string, exitCode: number) => {
     setRunning(false);
     if (exitCode === 0) {
-      toast.success("Evaluation complete — see report path in output.");
+      router.refresh();
+      toast.success("Evaluation saved to tracker — check Dashboard.");
     } else {
       toast.error(`Evaluation finished with exit code ${exitCode}.`);
     }
@@ -116,9 +118,9 @@ export function PasteForm() {
           </div>
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
-              The agent runs the full A–G evaluation, writes a report, and
-              merges into the tracker. Both URL + JD are passed when
-              available so it can verify with Playwright.
+              Runs an AI fit evaluation from your JD text, saves a report plus
+              a tracker row linked to your account. Pass a URL too so the scan
+              list can flip to Evaluated when the posting came from Scanner.
             </p>
             <Button
               onClick={runEval}

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -454,6 +455,7 @@ function detectLocationPreset(lines: string[]): LocationPreset {
 }
 
 export type ParsedPortalsForm = {
+  companyFilter: string;
   titlePreset: TitlePreset;
   positiveLines: string;
   negativePresetKeys: Set<string>;
@@ -465,6 +467,7 @@ export type ParsedPortalsForm = {
 
 export function parsePortalsToFormState(cfg: PortalsYamlConfig | null | undefined): ParsedPortalsForm {
   const emptyNegative = (): ParsedPortalsForm => ({
+    companyFilter: "",
     titlePreset: "any",
     positiveLines: "",
     negativePresetKeys: new Set(),
@@ -491,6 +494,8 @@ export function parsePortalsToFormState(cfg: PortalsYamlConfig | null | undefine
   const lNeg = (cfg.location_filter?.negative ?? []).map(String);
 
   return {
+    companyFilter:
+      typeof cfg.company_filter === "string" ? cfg.company_filter : "",
     titlePreset: detectTitlePreset(pos),
     positiveLines: pos.join("\n"),
     negativePresetKeys,
@@ -553,6 +558,7 @@ function mergeLocationFilter(opts: {
 }
 
 function buildConfigFromState(args: {
+  companyFilter: string;
   positiveLines: string;
   negativePresetKeys: Set<string>;
   negativeExtraLines: string;
@@ -577,6 +583,9 @@ function buildConfigFromState(args: {
   if (tp === 0 && lp === 0) return null;
 
   const out: PortalsYamlConfig = { tracked_companies };
+  const cf = args.companyFilter.trim().slice(0, 200);
+  /** Persist empty string so profile merge clears a previous filter (see `deepMerge` in profile.ts). */
+  out.company_filter = cf;
   if (title_filter) out.title_filter = title_filter;
   if (location_filter) out.location_filter = location_filter;
   return out;
@@ -594,6 +603,7 @@ export type AtsBoardsEditorProps = {
 export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoardsEditorProps>(
   function AtsBoardsEditor({ portalsSeed }, ref) {
     const s0 = parseSeed(portalsSeed);
+    const [companyFilter, setCompanyFilter] = React.useState(s0.companyFilter);
     const [titlePreset, setTitlePreset] = React.useState<TitlePreset>(s0.titlePreset);
     const [positiveLines, setPositiveLines] = React.useState(s0.positiveLines);
     const [negativePresetKeys, setNegativePresetKeys] = React.useState<Set<string>>(
@@ -632,6 +642,7 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
       if (portalsSeed === lastSeedRef.current) return;
       lastSeedRef.current = portalsSeed;
       const next = parseSeed(portalsSeed);
+      setCompanyFilter(next.companyFilter);
       setTitlePreset(next.titlePreset);
       setPositiveLines(next.positiveLines);
       setNegativePresetKeys(new Set(next.negativePresetKeys));
@@ -667,6 +678,7 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
       () => ({
         getConfig: () =>
           buildConfigFromState({
+            companyFilter,
             positiveLines,
             negativePresetKeys,
             negativeExtraLines,
@@ -676,6 +688,7 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
         hasIncompleteCompanyRows: () => false,
       }),
       [
+        companyFilter,
         positiveLines,
         negativePresetKeys,
         negativeExtraLines,
@@ -686,6 +699,7 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
 
     const previewJson = React.useMemo(() => {
       const cfg = buildConfigFromState({
+        companyFilter,
         positiveLines,
         negativePresetKeys,
         negativeExtraLines,
@@ -694,6 +708,7 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
       });
       return cfg ? JSON.stringify(cfg, null, 2) : "";
     }, [
+      companyFilter,
       positiveLines,
       negativePresetKeys,
       negativeExtraLines,
@@ -705,10 +720,11 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
       <div className="flex flex-col gap-8">
         <div className="rounded-md border bg-muted/30 px-4 py-3 space-y-3 text-sm text-muted-foreground leading-relaxed">
           <p>
-            <strong className="text-foreground">Pick titles and locations only.</strong> We scan a fixed list
-            of about {DEFAULT_PORTAL_CATALOG_SIZE} employer ATS boards that support direct API reads (no picking
-            companies here). Matches use simple substring checks on each posting&apos;s role title and location
-            text.
+            <strong className="text-foreground">Titles and locations drive matches.</strong> By default we query{" "}
+            {DEFAULT_PORTAL_CATALOG_SIZE} employer ATS boards (Greenhouse/Ashby/Lever) that expose public JSON,
+            aggregate every open role that fits, then give you the {HOSTED_SCAN_MATCH_LIMIT} newest hits. Leave
+            the optional company filter empty to sweep all of those boards—set it only when you want postings
+            from employers whose catalog name contains your text (substring, case-insensitive).
           </p>
           <p>
             <strong className="text-foreground">What you get per run:</strong> up to{" "}
@@ -741,6 +757,23 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
               </span>
             </label>
           </div>
+        </div>
+
+        <div className="space-y-3 border-t pt-8">
+          <Label htmlFor="company-filter" className="text-base font-medium">
+            Optional employer filter
+          </Label>
+          <p className="text-sm text-muted-foreground">
+            Empty = scan every board in our directory (~{DEFAULT_PORTAL_CATALOG_SIZE} employers). Filled =
+            substring match against each board&apos;s display name only (does not magically search the whole web).
+          </p>
+          <Input
+            id="company-filter"
+            value={companyFilter}
+            onChange={(e) => setCompanyFilter(e.target.value)}
+            placeholder="e.g. Stripe — leave blank for all employers"
+            className="max-w-xl"
+          />
         </div>
 
         <div className="space-y-3 border-t pt-8">

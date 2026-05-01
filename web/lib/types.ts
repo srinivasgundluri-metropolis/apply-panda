@@ -124,7 +124,7 @@ export interface LinkedInResponse {
 
 /** `POST /api/portals/search` — ATS boards + portals.yml filters. */
 export interface PortalSearchResponse {
-  query: { keywords: string; limit: number };
+  query: { keywords: string; limit: number; company_filter?: string };
   title_filter: { positive: string[]; negative: string[] };
   /** Omitted on older cached client payloads — treat as no location filter */
   location_filter?: { positive: string[]; negative: string[] };
@@ -162,6 +162,8 @@ export interface PortalsTrackedCompany {
 
 export interface PortalsYamlConfig {
   tracked_companies?: PortalsTrackedCompany[];
+  /** When set (case-insensitive substring), only boards whose catalog `name` matches are queried. */
+  company_filter?: string;
   title_filter?: { positive?: string[]; negative?: string[] };
   /** Same rules as titles: substring match on the job location string after fetch. */
   location_filter?: { positive?: string[]; negative?: string[] };

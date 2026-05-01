@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import type {
   LinkedInResponse,
   LinkedInResult,
+  PortalSearchResponse,
   RecentSearch,
   SseEvent,
 } from "@/lib/types";
@@ -136,6 +137,54 @@ function buildLinkedInSearchReply(data: LinkedInResponse): {
       `| ${escapeTableCell(j.company)} | ${escapeTableCell(j.title)} | ${escapeTableCell(j.location)} | ${j.url} |`,
   );
   return { content: `${lines.join("\n")}\n\n${header}\n${rows.join("\n")}`, jobs };
+}
+
+function buildPortalSearchReply(data: PortalSearchResponse): {
+  content: string;
+  jobs: LinkedInResult[];
+} {
+  const q = data.query;
+  const lines: string[] = [
+    "**ATS Job Boards** (curated Greenhouse/Ashby/Lever/Workday boards from your profile targeting filters).",
+    "",
+    "**Query sent:**",
+    `- Keywords: ${formatInlineCode(q.keywords)}`,
+    `- Limit: ${q.limit}`,
+    `- Boards queried: ${data.companies_scanned}`,
+    "",
+    `**Fetched:** ${data.results.length} row(s) · title-filter pool: ${data.stats.title_filtered_total}`,
+  ];
+  const jobs = data.results;
+  if (jobs.length === 0) {
+    return {
+      content:
+        lines.join("\n") +
+        "\n\n_No ATS postings matched. Broaden title keywords, loosen location filters in Profile → ATS job targeting, or run LinkedIn search._",
+      jobs: [],
+    };
+  }
+  const header = "| Company | Title | Location | URL |\n| --- | --- | --- | --- |";
+  const rows = jobs.map(
+    (j) =>
+      `| ${escapeTableCell(j.company)} | ${escapeTableCell(j.title)} | ${escapeTableCell(j.location)} | ${j.url} |`,
+  );
+  return { content: `${lines.join("\n")}\n\n${header}\n${rows.join("\n")}`, jobs };
+}
+
+function isLikelyJobSearchIntent(text: string): boolean {
+  return /\b(job|jobs|role|roles|opening|openings|posted|hiring|career|careers|linkedin|greenhouse|ashby|lever|workday|last\s+\d+\s*(h|hr|hrs|hour|hours|day|days)|yesterday)\b/i.test(
+    text,
+  );
+}
+
+function wantsLinkedInSource(text: string): boolean {
+  return /\blinked[\s-]?in\b/i.test(text);
+}
+
+function wantsPortalSource(text: string): boolean {
+  return /\b(stanford jobs|stanford careers|jobs site|career site|greenhouse|ashby|lever|workday|ats)\b/i.test(
+    text,
+  );
 }
 
 function loadHistory(): ChatMessage[] {
@@ -420,11 +469,139 @@ export function ChatPanel({
     }
   };
 
+  const runPortalJobSearch = async (message: string) => {
+    const userMsg: ChatMessage = {
+      role: "user",
+      content: message,
+      id: makeId(),
+    };
+    const assistantId = makeId();
+    setHistory((prev) => [...prev, userMsg]);
+    setInput("");
+    setLinkedInSearching(true);
+    try {
+      const res = await fetch("/api/portals/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keywords: message, limit: 25 }),
+      });
+      const data = (await res.json()) as PortalSearchResponse & { error?: string };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      const { content, jobs } = buildPortalSearchReply(data);
+      setHistory((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content,
+          jobs: jobs.length > 0 ? jobs : undefined,
+          id: assistantId,
+        },
+      ]);
+      if (jobs.length > 0) trackRecent(message, jobs);
+    } catch (e) {
+      toast.error(`ATS search failed: ${(e as Error).message}`);
+      setHistory((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `_ATS search failed: ${(e as Error).message}_`,
+          id: assistantId,
+        },
+      ]);
+    } finally {
+      setLinkedInSearching(false);
+    }
+  };
+
+  const runCombinedJobSearch = async (message: string) => {
+    const userMsg: ChatMessage = {
+      role: "user",
+      content: message,
+      id: makeId(),
+    };
+    const assistantId = makeId();
+    setHistory((prev) => [...prev, userMsg]);
+    setInput("");
+    setLinkedInSearching(true);
+    try {
+      const [liRes, portalRes] = await Promise.all([
+        fetch("/api/linkedin/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            keywords: message,
+            limit: 25,
+            ...(profileLocationHint ? { location: profileLocationHint } : {}),
+            timeRange: "any",
+          }),
+        }),
+        fetch("/api/portals/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keywords: message, limit: 25 }),
+        }),
+      ]);
+
+      const liData = (await liRes.json()) as LinkedInResponse & { error?: string };
+      const portalData = (await portalRes.json()) as PortalSearchResponse & {
+        error?: string;
+      };
+
+      if (!liRes.ok && !portalRes.ok) {
+        throw new Error(
+          `LinkedIn: ${liData.error ?? `HTTP ${liRes.status}`} | ATS: ${portalData.error ?? `HTTP ${portalRes.status}`}`,
+        );
+      }
+
+      const li = liRes.ok ? buildLinkedInSearchReply(liData) : null;
+      const ats = portalRes.ok ? buildPortalSearchReply(portalData) : null;
+      const combinedJobs = [...(li?.jobs ?? []), ...(ats?.jobs ?? [])].slice(0, 40);
+      const contentParts: string[] = [];
+      if (li) contentParts.push(li.content);
+      else contentParts.push(`_LinkedIn search failed: ${liData.error ?? `HTTP ${liRes.status}`}_`);
+      if (ats) contentParts.push(ats.content);
+      else contentParts.push(`_ATS search failed: ${portalData.error ?? `HTTP ${portalRes.status}`}_`);
+
+      setHistory((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: contentParts.join("\n\n---\n\n"),
+          jobs: combinedJobs.length > 0 ? combinedJobs : undefined,
+          id: assistantId,
+        },
+      ]);
+      if (combinedJobs.length > 0) trackRecent(message, combinedJobs);
+    } catch (e) {
+      toast.error(`Job search failed: ${(e as Error).message}`);
+      setHistory((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `_Job search failed: ${(e as Error).message}_`,
+          id: assistantId,
+        },
+      ]);
+    } finally {
+      setLinkedInSearching(false);
+    }
+  };
+
   const sendMessage = async (rawText: string) => {
     const message = rawText.trim();
     if (!message || streaming || resumeCoachLoading || linkedInSearching) return;
 
-    if (!resumeCoachMode && linkedInSearchFirst) {
+    if (!resumeCoachMode && linkedInSearchFirst && isLikelyJobSearchIntent(message)) {
+      const wantsLi = wantsLinkedInSource(message);
+      const wantsAts = wantsPortalSource(message);
+      if (wantsLi && wantsAts) {
+        await runCombinedJobSearch(message);
+        return;
+      }
+      if (wantsAts) {
+        await runPortalJobSearch(message);
+        return;
+      }
       await runLinkedInJobSearch(message);
       return;
     }
@@ -632,7 +809,7 @@ export function ChatPanel({
                 <p className="text-sm text-muted-foreground max-w-md mt-1">
                   {resumeCoachMode
                     ? "Describe changes, upload a résumé file (`.docx/.md/.txt`) for conversion, or both — the coach merges into your workspace using your configured model."
-                    : "With **LinkedIn search first** on, Send runs the guest Jobs API against your keywords (optional location from Profile). Results are real URLs you can ⚡ Evaluate. Turn it off to chat about tracker, reports, negotiation, headline/About drafts, or how your profile/targeting fits openings—still grounded in **your saved data**."}
+                    : "Normal chat works by default for profile/tracker/questions. With **LinkedIn search first** on, job-search asks automatically use LinkedIn guest search and ATS board search when relevant. Results are real URLs you can ⚡ Evaluate."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 justify-center max-w-2xl mt-2">
@@ -714,7 +891,7 @@ export function ChatPanel({
               — update <code className="text-[10px]">cv.md</code>,{" "}
               <code className="text-[10px]">profile.yml</code>,{" "}
               <code className="text-[10px]">cover-letter-base.md</code>{" "}
-              (requires <code className="text-[10px]">OPENAI_API_KEY</code> in environment). Turn this on <em>instead of</em> LinkedIn / strategy chat.
+              (requires <code className="text-[10px]">OPENAI_API_KEY</code> in environment). Turn this on only when you want to apply edits to canonical resume/profile files.
             </span>
           </label>
           {!resumeCoachMode ? (
@@ -730,7 +907,7 @@ export function ChatPanel({
                 <span className="font-medium text-foreground">
                   LinkedIn search first
                 </span>{" "}
-                — guest Jobs API using your box text as keywords
+                — in normal chat, detects job-search asks and uses LinkedIn guest Jobs API (and ATS boards when requested)
                 {profileLocationHint ? (
                   <>
                     {" "}
@@ -743,7 +920,7 @@ export function ChatPanel({
                     )
                   </>
                 ) : null}
-                . Off = chat only (summaries of tracker/reports, LinkedIn headline ideas, negotiating, etc.).
+                . Off = always pure chat (no automatic job-search tool calls).
               </span>
             </label>
           ) : null}
@@ -819,8 +996,8 @@ export function ChatPanel({
               placeholder={
                 resumeCoachMode
                   ? "e.g. Instructions to merge into your uploaded resume import, or type-only edits (Skills, headline…)"
-                  : linkedInSearchFirst
-                    ? "LinkedIn keywords e.g. staff ML platform engineer remote — or add a city/country…"
+                    : linkedInSearchFirst
+                    ? "Ask normally; job-search asks auto-use LinkedIn/ATS tools (e.g. 'Stanford life sciences jobs in last 24h')"
                     : "Ask about your tracker/reports, profile fit, LinkedIn About/headline, negotiation…"
               }
               value={input}

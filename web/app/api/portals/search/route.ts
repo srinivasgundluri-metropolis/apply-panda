@@ -39,7 +39,7 @@ function toResults(
 }
 
 /**
- * Job search for chat: same engine as Pipeline scan (Adzuna when configured, else curated ATS boards).
+ * Job search for chat: same engine as Pipeline scan (curated ATS boards).
  * Filters come from per-user `profiles.data.portals`; optional keywords narrow titles. Read-only (no scan_history writes).
  */
 export async function POST(req: NextRequest) {

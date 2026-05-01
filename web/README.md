@@ -30,11 +30,9 @@ APPLYPANDA_ALLOWED_EMAILS="user1@example.com,user2@example.com,user3@example.com
 # Optional: Chrome/Chromium binary for tailored PDF rendering locally (or debugging `/api/docs/pdf-probe`)
 # PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 #
-# Broad job board scans (title + location, many employers) — recommended for Pipeline:
-# https://developer.adzuna.com/
-# ADZUNA_APP_ID=...
-# ADZUNA_APP_KEY=...
-# APPLYPANDA_ADZUNA_COUNTRY=us
+# Scan behavior:
+# - LinkedIn search is available in Chat via `/api/linkedin/search`
+# - Pipeline/ATS scan uses curated Greenhouse/Ashby/Lever/Workday boards via profile targeting filters
 ```
 
 ## Hosted deployment (Vercel)

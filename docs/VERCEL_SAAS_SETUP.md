@@ -23,9 +23,6 @@ Set these in Vercel Project Settings -> Environment Variables:
 - `APPLYPANDA_ALLOWED_EMAILS` (comma-separated allowlist for access control)
 - `APPLYPANDA_LOCKDOWN` (optional, set `true` to force global 503 maintenance mode)
 - `APPLYPANDA_SKIP_PDF` (optional, `1` / `true` / `yes` — skip Chromium; tracker gets **printable `.html`** instead of `.pdf` for each tailored file). Prompts target **one US Letter page per file**; PDF export still depends on headless Chrome when this is unset.
-- **`ADZUNA_APP_ID`** + **`ADZUNA_APP_KEY`** (**recommended**) — Pipeline + chat portal search queries the **Adzuna** index (many employers by title + location) instead of only the curated ATS board list. [Create keys](https://developer.adzuna.com/) under an Adzuna developer account.
-- `APPLYPANDA_ADZUNA_COUNTRY` (optional, default **`us`** — two-letter ISO country code matching Adzuna’s jobs API routes, e.g. `gb`).
-- `APPLYPANDA_USE_ATS_CATALOG` (optional, `1` / `true` / `yes` — force the **curated ATS directory** scan path even when Adzuna credentials are configured).
 
 Legacy DB columns `applications.cv_ats_docx_path`, `cv_full_docx_path`, `cl_docx_path` remain nullable; regenerate clears them when present. **Existing** installs that predated DOCX tracking: run `web/supabase/alter-applications-docx-paths.sql` once if those columns are missing.
 

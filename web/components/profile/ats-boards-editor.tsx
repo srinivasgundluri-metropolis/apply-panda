@@ -699,9 +699,8 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
             <strong className="text-foreground">{HOSTED_SCAN_MATCH_LIMIT}</strong> newest matches.
           </p>
           <p>
-            With <code className="text-xs">ADZUNA_APP_ID</code> +{" "}
-            <code className="text-xs">ADZUNA_APP_KEY</code>, search is broad across many employers; without
-            those env vars, we use our curated ATS directory (~{DEFAULT_PORTAL_CATALOG_SIZE} boards).
+            Scan uses our curated ATS directory (~{DEFAULT_PORTAL_CATALOG_SIZE} boards). For additional
+            discovery, use LinkedIn-first search in chat.
           </p>
         </div>
 
@@ -710,8 +709,8 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
             Optional employer filter
           </Label>
           <p className="text-sm text-muted-foreground">
-            Empty = no employer-name substring filter. With Adzuna enabled, postings can come from any indexed
-            company; otherwise this matches our ATS directory (~{DEFAULT_PORTAL_CATALOG_SIZE} boards).
+            Empty = no employer-name substring filter. This narrows matches within the ATS directory
+            (~{DEFAULT_PORTAL_CATALOG_SIZE} boards).
           </p>
           <Input
             id="company-filter"

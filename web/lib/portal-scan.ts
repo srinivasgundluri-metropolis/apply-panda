@@ -6,12 +6,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PortalsYamlConfig } from "@/lib/types";
 import { defaultCatalogCopy } from "@/lib/default-portal-catalog";
-import {
-  fetchAdzunaPortalJobs,
-  forceHostedAtsCatalogOnly,
-  isAdzunaJobSearchConfigured,
-  portalsAdzunaWhatWhere,
-} from "@/lib/adzuna-jobs";
 
 const USER_PORTALS_REQUIRED_MSG =
   "Portal scanner is not configured. Open Profile → ATS job targeting: add at least one title phrase or location line.";
@@ -365,18 +359,13 @@ function positiveLineCount(lines: string[] | undefined): number {
 }
 
 /**
- * When **not** using Adzuna broad search ({@link hostedScanUsesAdzuna}), hosted scans merge the user’s portals
- * stub with ApplyPanda’s built-in ATS directory ({@link defaultCatalogCopy}).
- * Saved `tracked_companies` on the profile is ignored for fetch volume then; optional `company_filter`
- * still narrows which catalog boards run.
+ * Hosted scans merge the user’s portals stub with ApplyPanda’s built-in ATS
+ * directory ({@link defaultCatalogCopy}). Saved `tracked_companies` on the
+ * profile is ignored for fetch volume; optional `company_filter` still narrows
+ * which catalog boards run.
  */
 export function mergeUserPortalsWithDefaultCatalog(cfg: PortalsYamlConfig): PortalsYamlConfig {
   return { ...cfg, tracked_companies: defaultCatalogCopy() };
-}
-
-/** True when Vercel has Adzuna keys and the deploy is not forced back to the ATS sweep. */
-export function hostedScanUsesAdzuna(): boolean {
-  return isAdzunaJobSearchConfigured() && !forceHostedAtsCatalogOnly();
 }
 
 export function assertHostedScanHasTitleOrLocation(cfg: PortalsYamlConfig) {
@@ -534,57 +523,6 @@ export async function collectAllTitleFilteredPortalJobs(
   options: CollectPortalJobsOpts = {},
 ): Promise<{ config: PortalsYamlConfig; companiesScanned: number; jobs: PortalJob[] }> {
   assertHostedScanHasTitleOrLocation(cfg);
-
-  if (hostedScanUsesAdzuna()) {
-    const opts = {
-      ...hostedScanCollectOptions(cfg),
-      ...options,
-    };
-    const companyNeedle = (opts.companyNameContains ?? "").trim().toLowerCase();
-    const rawJobs = await fetchAdzunaPortalJobs(cfg, HOSTED_SCAN_MATCH_LIMIT);
-    const { whatQueries, where } = portalsAdzunaWhatWhere(cfg);
-    /**
-     * Adzuna already applies `what` / `where`. Re-applying location *positives*
-     * client-side often drops every row because ATS snippets omit or abbreviate
-     * location vs profile text (e.g. "Chicago IL" vs ""). Only enforce **negatives**
-     * here when the query carried that axis; still run full title/location positives
-     * when we did not send the corresponding API param.
-     */
-    const titleNegOnly = buildSubstringTextFilter({
-      negative: cfg.title_filter?.negative,
-    });
-    const locNegOnly = buildSubstringTextFilter({
-      negative: cfg.location_filter?.negative,
-    });
-    let filtered = rawJobs.filter(
-      (j) => j.url.trim() && titleNegOnly(j.title) && locNegOnly(j.location ?? ""),
-    );
-    const hasWhat = whatQueries.some((q) => q.trim().length > 0);
-    if (!hasWhat) {
-      const titleFilter = buildTitleFilter(cfg.title_filter);
-      filtered = filtered.filter((j) => titleFilter(j.title));
-    }
-    if (!where.trim()) {
-      const locationFilter = buildLocationFilter(cfg.location_filter);
-      filtered = filtered.filter((j) =>
-        locationPassWithUnknownAllowed(
-          j.location ?? "",
-          cfg.location_filter,
-          locationFilter,
-        ),
-      );
-    }
-    if (companyNeedle) {
-      filtered = filtered.filter((j) =>
-        j.company.toLowerCase().includes(companyNeedle),
-      );
-    }
-    return {
-      config: cfg,
-      companiesScanned: 1,
-      jobs: sortHostedScanJobsByRecency(dedupeByUrl(filtered as PortalJob[])),
-    };
-  }
 
   const scanCfg = mergeUserPortalsWithDefaultCatalog(cfg);
   const titleFilter = buildTitleFilter(scanCfg.title_filter);

@@ -13,11 +13,20 @@ import { JobActions } from "@/components/chat/job-actions";
 import { RecentSearches } from "@/components/chat/recent-searches";
 import { SseStream } from "@/components/sse-stream";
 import { extractJobsBlock } from "@/lib/jobs-block";
+import {
+  parseJobSearchIntent,
+  applyPostFilters,
+  buildAppliedFilterNote,
+  isLikelyJobSearchIntent,
+} from "@/lib/job-search-intent";
+import { buildLinkedInSearchTableReply } from "@/lib/linkedin-job-table-reply";
 import { cn } from "@/lib/utils";
-import type { LinkedInResult, RecentSearch, SseEvent } from "@/lib/types";
+import type { LinkedInResponse, LinkedInResult, RecentSearch, SseEvent } from "@/lib/types";
 
 interface ChatPanelProps {
   candidateFirst: string;
+  /** Profile \`candidate.location\` — LinkedIn guest search geo hint. */
+  profileLocationHint?: string;
 }
 
 interface ChatMessage {
@@ -35,11 +44,11 @@ const RECENT_KEY = "career-ops:recent-searches";
 const HISTORY_KEY = "career-ops:chat-history";
 
 const SUGGESTED_PROMPTS = [
-  "LinkedIn search: senior machine learning engineer remote",
-  "Find staff backend roles in London on LinkedIn",
+  "Show me remote senior ML engineer jobs on LinkedIn from the last week",
+  "List staff backend roles in London — LinkedIn",
   "Given my profile, suggest a sharper LinkedIn About section (3 short paragraphs)",
   "Which roles in my tracker are still Evaluated vs Applied — what should I do next?",
-  "Compare my profile target_roles to these LinkedIn postings I care about…",
+  "How should I tighten my target_roles vs my last three evaluations?",
 ];
 
 /** Short label on chip; full text sent to `/api/resume-context/apply`. */
@@ -128,7 +137,10 @@ async function readErrorMessage(res: Response): Promise<string> {
   }
 }
 
-export function ChatPanel({ candidateFirst }: ChatPanelProps) {
+export function ChatPanel({
+  candidateFirst,
+  profileLocationHint,
+}: ChatPanelProps) {
   const [history, setHistory] = React.useState<ChatMessage[]>([]);
   const [recent, setRecent] = React.useState<RecentSearch[]>([]);
   const [input, setInput] = React.useState("");
@@ -144,6 +156,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     null,
   );
   const [evalKey, setEvalKey] = React.useState(0);
+  const [jobSearchLoading, setJobSearchLoading] = React.useState(false);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   // Without this guard, the first persist effect ran while `history` was still
   // empty (before hydrate completed), overwriting localStorage — wiping chat.
@@ -214,7 +227,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     const resumeFile = coachResumeFile;
 
     if (!uploadedResumeMarkdown && !textNote) return;
-    if (resumeCoachLoading || streaming) return;
+    if (resumeCoachLoading || streaming || jobSearchLoading) return;
 
     const uploadingPdf = uploadedResumeMarkdown.length > 0;
     const resumeName = resumeFile?.name ?? "uploaded-resume";
@@ -288,7 +301,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
   };
 
   const uploadResumeFile = async (file: File) => {
-    if (resumeCoachLoading || streaming) return;
+    if (resumeCoachLoading || streaming || jobSearchLoading) return;
     setResumeCoachLoading(true);
     setCoachProgressHint("Converting resume file to markdown…");
     try {
@@ -317,7 +330,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
 
   const sendMessage = async (rawText: string) => {
     const message = rawText.trim();
-    if (!message || streaming || resumeCoachLoading) return;
+    if (!message || streaming || resumeCoachLoading || jobSearchLoading) return;
 
     const userMsg: ChatMessage = {
       role: "user",
@@ -326,9 +339,58 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     };
     const assistantId = makeId();
     setHistory((prev) => [...prev, userMsg]);
+    setInput("");
+
+    if (!resumeCoachMode && isLikelyJobSearchIntent(message)) {
+      const intent = parseJobSearchIntent(message);
+      setJobSearchLoading(true);
+      try {
+        const res = await fetch("/api/linkedin/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            keywords: intent.query,
+            limit: 25,
+            ...(profileLocationHint ? { location: profileLocationHint } : {}),
+            timeRange: intent.timeRange,
+          }),
+        });
+        const data = (await res.json()) as LinkedInResponse & { error?: string };
+        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+        const filtered = applyPostFilters(data.results, intent);
+        const { content, jobs } = buildLinkedInSearchTableReply(
+          data,
+          filtered,
+          buildAppliedFilterNote(intent),
+        );
+        setHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content,
+            jobs: jobs.length > 0 ? jobs : undefined,
+            id: assistantId,
+          },
+        ]);
+        if (jobs.length > 0) trackRecent(message, jobs);
+      } catch (e) {
+        toast.error(`LinkedIn search failed: ${(e as Error).message}`);
+        setHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `_LinkedIn search failed: ${(e as Error).message}_`,
+            id: assistantId,
+          },
+        ]);
+      } finally {
+        setJobSearchLoading(false);
+      }
+      return;
+    }
+
     setStreaming(true);
     setStreamingContent("");
-    setInput("");
 
     try {
       const res = await fetch("/api/chat/stream", {
@@ -444,7 +506,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
     saveRecent([]);
   };
 
-  const busy = streaming || resumeCoachLoading;
+  const busy = streaming || resumeCoachLoading || jobSearchLoading;
   const empty = history.length === 0 && !busy;
 
   const recentUserPrompts = React.useMemo(() => {
@@ -522,7 +584,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
                 <p className="text-sm text-muted-foreground max-w-md mt-1">
                   {resumeCoachMode
                     ? "Describe changes, upload a résumé file (`.docx/.md/.txt`) for conversion, or both — the coach merges into your workspace using your configured model."
-                    : "Ask in plain language (for example, Stanford research assistant roles posted in the last few days). The assistant replies conversationally; the server attaches real LinkedIn + ATS rows when your message looks like a job search."}
+                    : "**Listing-style asks** (e.g. “show me jobs…”, “on LinkedIn”, posted last week) run **LinkedIn guest search** and return a **fixed markdown table** like the old Streamlit flow. **Everything else** — profile, résumé, evaluations, tracker, strategy — goes to the AI assistant."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 justify-center max-w-2xl mt-2">
@@ -578,10 +640,14 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               onEvaluate={handleEvaluate}
               live
             />
-          ) : streaming ? (
+          ) : streaming || jobSearchLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              <span>thinking…</span>
+              <span>
+                {jobSearchLoading
+                  ? "Running LinkedIn guest search…"
+                  : "thinking…"}
+              </span>
             </div>
           ) : null}
         </div>
@@ -677,7 +743,7 @@ export function ChatPanel({ candidateFirst }: ChatPanelProps) {
               placeholder={
                 resumeCoachMode
                   ? "e.g. Instructions to merge into your uploaded resume import, or type-only edits (Skills, headline…)"
-                    : "e.g. Stanford research assistant jobs posted in the last 3 days, or tracker / negotiation / headline help…"
+                    : "Job table: “Show me Stanford research assistant jobs from the last 3 days on LinkedIn” · AI: “How do I tighten my tracker next steps?”"
               }
               value={input}
               onChange={(e) => setInput(e.target.value)}

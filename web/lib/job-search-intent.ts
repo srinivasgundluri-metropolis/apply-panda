@@ -97,23 +97,6 @@ export function parseJobSearchIntent(text: string): ParsedJobSearchIntent {
   };
 }
 
-/** When user does not name a source, chat fetches both LinkedIn and ATS for grounding. */
-export function resolveLiveJobFetchPlan(intent: ParsedJobSearchIntent): {
-  linkedIn: boolean;
-  ats: boolean;
-} {
-  if (intent.wantsLinkedIn && !intent.wantsAtsBoards) {
-    return { linkedIn: true, ats: false };
-  }
-  if (!intent.wantsLinkedIn && intent.wantsAtsBoards) {
-    return { linkedIn: false, ats: true };
-  }
-  if (intent.wantsLinkedIn && intent.wantsAtsBoards) {
-    return { linkedIn: true, ats: true };
-  }
-  return { linkedIn: true, ats: true };
-}
-
 export function applyPostFilters(
   jobs: LinkedInResult[],
   intent: ParsedJobSearchIntent,
@@ -156,8 +139,44 @@ export function buildAppliedFilterNote(intent: ParsedJobSearchIntent): string {
   return `\n\n**Applied filters:** ${bits.join(" · ")}`;
 }
 
+/**
+ * True when the user is asking for **external** job listings (LinkedIn guest search path),
+ * not tracker / applications.md inventory or strategy-only questions.
+ */
 export function isLikelyJobSearchIntent(text: string): boolean {
-  return /\b(job|jobs|role|roles|opening|openings|posted|posting|postings|hiring|career|careers|linkedin|greenhouse|ashby|lever|workday|last\s+\d+\s*(h|hr|hrs|hour|hours|day|days)|yesterday)\b/i.test(
-    text,
-  );
+  const raw = text.trim();
+
+  const trackerLean =
+    /\b(jobs?|roles?|openings?)\b.*\btracker\b|\btracker\b.*\b(jobs?|roles?|openings?|applications)\b|\b(in|from)\s+my\s+tracker\b|\bapplications\.md\b|\bdata\/applications\b|\bscan[-\s]?history\b/i.test(
+      raw,
+    );
+  const explicitListing =
+    /\blinked[\s-]?in\b|\ball\s+(the\s+)?jobs?\b|\b(any\s+)?new\s+jobs?\b|\b(find|search|get|fetch|show|give|list)(\s+me)?\s+(all\s+)?(the\s+)?(jobs?|roles?|postings?|openings?|vacancies)\b/i.test(
+      raw,
+    );
+  if (trackerLean && !explicitListing) return false;
+
+  if (explicitListing) return true;
+
+  if (
+    /\b(greenhouse|ashby|lever|workday|careers?\s+site|job\s+board)\b/i.test(raw)
+  ) {
+    return true;
+  }
+
+  if (
+    /\b(last|past|yesterday|recent|posted|hiring)\b/i.test(raw) &&
+    /\b(job|jobs|role|roles|opening|openings|career|careers)\b/i.test(raw)
+  ) {
+    return true;
+  }
+
+  if (
+    /\b(last\s+\d+\s*(h|hr|hrs|hour|hours|day|days))\b/i.test(raw) &&
+    /\b(job|jobs|role|roles)\b/i.test(raw)
+  ) {
+    return true;
+  }
+
+  return false;
 }

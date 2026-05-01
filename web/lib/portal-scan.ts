@@ -4,10 +4,11 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { PortalsYamlConfig } from "@/lib/types";
+import type { PortalsTrackedCompany, PortalsYamlConfig } from "@/lib/types";
+import { defaultCatalogCopy } from "@/lib/default-portal-catalog";
 
 const USER_PORTALS_REQUIRED_MSG =
-  "Portal scanner is not configured. Open Profile → Portals and paste JSON with a non-empty tracked_companies array (same shape as career-ops portals.yml). You can start from templates/portals.example.yml in the repo and customize companies.";
+  "Portal scanner is not configured. Open Profile → ATS boards: add title or location keywords, or paste employer boards (same JSON shape as career-ops portals.yml).";
 
 /** Thrown when `profiles.data.portals` is missing, null, or invalid for scan/search. */
 export class UserPortalsConfigMissingError extends Error {
@@ -257,14 +258,60 @@ export function buildLocationFilter(
   return buildSubstringTextFilter(locationFilter);
 }
 
-function isValidUserPortals(p: unknown): p is PortalsYamlConfig {
-  if (!p || typeof p !== "object" || Array.isArray(p)) return false;
-  const c = (p as PortalsYamlConfig).tracked_companies;
-  return Array.isArray(c) && c.length > 0;
+/** User-supplied employers with a fetchable ATS URL still enabled. */
+function userListedBoards(tc: PortalsTrackedCompany[] | undefined): PortalsTrackedCompany[] {
+  if (!tc?.length) return [];
+  return tc.filter(
+    (c) =>
+      c.enabled !== false &&
+      typeof c.careers_url === "string" &&
+      c.careers_url.trim().length > 0 &&
+      detectPortalApi(c as { careers_url?: string; api?: string }),
+  );
+}
+
+function positiveLineCount(lines: string[] | undefined): number {
+  return (lines ?? []).filter((x) => String(x).trim().length > 0).length;
+}
+
+/** True when no user boards are configured (scan will merge the curated default catalog). */
+export function portalScanUsesDefaultCatalog(cfg: PortalsYamlConfig): boolean {
+  return userListedBoards(cfg.tracked_companies).length === 0;
+}
+
+/** Merges curated default boards only when `tracked_companies` is empty or has no callable URLs. */
+export function mergeUserPortalsWithDefaultCatalog(cfg: PortalsYamlConfig): PortalsYamlConfig {
+  const user = userListedBoards(cfg.tracked_companies);
+  if (user.length > 0) return cfg;
+  return { ...cfg, tracked_companies: defaultCatalogCopy() };
 }
 
 /**
- * Loads `profiles.data.portals` for the signed-in user only — no generic bundled defaults.
+ * When scanning the default employer directory, require title or location narrowing to avoid blind firehose scans.
+ */
+export function assertNarrowingWhenUsingDefaultCatalog(cfg: PortalsYamlConfig) {
+  if (!portalScanUsesDefaultCatalog(cfg)) return;
+  const tp = positiveLineCount(cfg.title_filter?.positive);
+  const lp = positiveLineCount(cfg.location_filter?.positive);
+  if (tp === 0 && lp === 0) {
+    throw new UserPortalsConfigMissingError(
+      "With no employers listed, add at least one title include phrase or one location hint so the default boards scan stays targeted. Alternatively add specific board URLs.",
+    );
+  }
+}
+
+function isValidUserPortals(p: unknown): p is PortalsYamlConfig {
+  if (!p || typeof p !== "object" || Array.isArray(p)) return false;
+  const cfg = p as PortalsYamlConfig;
+  if (cfg.tracked_companies !== undefined && !Array.isArray(cfg.tracked_companies)) return false;
+  if (userListedBoards(cfg.tracked_companies).length > 0) return true;
+  const tp = positiveLineCount(cfg.title_filter?.positive);
+  const lp = positiveLineCount(cfg.location_filter?.positive);
+  return tp > 0 || lp > 0;
+}
+
+/**
+ * Loads `profiles.data.portals` for the signed-in user (custom boards optional; empty boards need title OR location narrowing).
  */
 export async function loadPortalsConfigResolved(
   supabase: SupabaseClient,
@@ -284,7 +331,7 @@ export async function loadPortalsConfigResolved(
   }
   if (!isValidUserPortals(portals)) {
     throw new UserPortalsConfigMissingError(
-      "profiles.data.portals must be an object with a non-empty tracked_companies array. Open Profile → Portals and fix the JSON.",
+      "profiles.data.portals must list employers with board URLs or include title/location filter lines. Fix this under Profile → ATS job boards.",
     );
   }
   return portals;
@@ -337,11 +384,13 @@ export async function collectAllTitleFilteredPortalJobs(
   cfg: PortalsYamlConfig,
   options: CollectPortalJobsOpts = {},
 ): Promise<{ config: PortalsYamlConfig; companiesScanned: number; jobs: PortalJob[] }> {
-  const titleFilter = buildTitleFilter(cfg.title_filter);
-  const locationFilter = buildLocationFilter(cfg.location_filter);
+  assertNarrowingWhenUsingDefaultCatalog(cfg);
+  const scanCfg = mergeUserPortalsWithDefaultCatalog(cfg);
+  const titleFilter = buildTitleFilter(scanCfg.title_filter);
+  const locationFilter = buildLocationFilter(scanCfg.location_filter);
   const companyNeedle = (options.companyNameContains ?? "").trim().toLowerCase();
 
-  const companies = cfg.tracked_companies ?? [];
+  const companies = scanCfg.tracked_companies ?? [];
   const targets = companies
     .filter((c) => c.enabled !== false)
     .filter((c) => !companyNeedle || (c.name ?? "").toLowerCase().includes(companyNeedle))
@@ -383,7 +432,7 @@ export async function collectAllTitleFilteredPortalJobs(
     for (const arr of chunkResults) collected.push(...arr);
   }
 
-  return { config: cfg, companiesScanned: targets.length, jobs: dedupeByUrl(collected) };
+  return { config: scanCfg, companiesScanned: targets.length, jobs: dedupeByUrl(collected) };
 }
 
 /** Title filters from yaml, optional chat keywords, capped list for UI. */

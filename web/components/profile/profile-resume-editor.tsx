@@ -179,7 +179,7 @@ export function ProfileResumeEditor({
 
       if (atsBoardsRef.current?.hasIncompleteCompanyRows()) {
         toast.error(
-          "ATS boards: finish each company row (name + board slug or URL) or remove incomplete rows, then save again.",
+          "ATS boards: each row needs a supported careers slug or URL. Display labels are optional—fill the board URL or remove broken rows.",
         );
         setSaving(false);
         return;
@@ -396,16 +396,17 @@ export function ProfileResumeEditor({
               <CardTitle>ATS job boards</CardTitle>
               <CardDescription className="space-y-2 text-sm leading-relaxed">
                 <p>
-                  Add employers and board URLs deliberately first, then use titles and locations to narrow
-                  results. Covers Greenhouse, Ashby, Lever, and Workday (
+                  Scanning is driven by <strong>title and location keywords</strong>. Optional ATS board URLs
+                  focus which employers&apos; postings we poll; leave boards empty for a curated default ATS
+                  list (still narrowed by titles/locations). Supports Greenhouse, Ashby, Lever, and Workday (
                   <code className="text-muted-foreground">myworkdayjobs.com</code>
-                  ). This list is private to your account and powers{" "}
+                  ). Saved privately and powers{" "}
                   <strong>Chat → search job boards</strong> and <strong>Pipeline → Scan job boards</strong>.
                 </p>
                 <p>
-                  Use the form below — no JSON required. We save the same structure the scanner expects
-                  (including <code className="text-xs">title_filter</code>). To remove all boards,
-                  delete every company row and save.
+                  Use the form below — no JSON required (<code className="text-xs">title_filter</code>,{" "}
+                  <code className="text-xs">location_filter</code>, tracked boards). To clear boards, delete
+                  every row and save; titles/locations alone can still persist.
                 </p>
               </CardDescription>
             </CardHeader>

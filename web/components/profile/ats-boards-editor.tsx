@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DEFAULT_PORTAL_CATALOG_SIZE } from "@/lib/default-portal-catalog";
 import { detectPortalApi, parseWorkdayCareersUrl } from "@/lib/portal-scan";
 import type { PortalsTrackedCompany, PortalsYamlConfig } from "@/lib/types";
 
@@ -459,22 +460,23 @@ export function guessCompanyLabelFromUrl(url: string): string {
 
 export function inferRowFromCompany(c: PortalsTrackedCompany): CompanyFormRow {
   const url = (c.careers_url ?? "").trim();
-  const name = (c.name ?? "").trim();
+  const nameSeed = (c.name ?? "").trim();
   if (!url) {
     return {
       id: newRowId(),
-      name,
+      name: nameSeed,
       platform: "custom",
       slugOrUrl: "",
       enabled: c.enabled !== false,
     };
   }
+  const displayName = nameSeed || guessCompanyLabelFromUrl(url);
   const wd = parseWorkdayCareersUrl(url);
   if (wd) {
     const canonical = `${wd.calypsoOrigin}/${wd.siteId}`;
     return {
       id: newRowId(),
-      name,
+      name: displayName,
       platform: "workday",
       slugOrUrl: canonical,
       enabled: c.enabled !== false,
@@ -484,7 +486,7 @@ export function inferRowFromCompany(c: PortalsTrackedCompany): CompanyFormRow {
   if (ashby) {
     return {
       id: newRowId(),
-      name,
+      name: displayName,
       platform: "ashby",
       slugOrUrl: ashby[1],
       enabled: c.enabled !== false,
@@ -494,7 +496,7 @@ export function inferRowFromCompany(c: PortalsTrackedCompany): CompanyFormRow {
   if (lever) {
     return {
       id: newRowId(),
-      name,
+      name: displayName,
       platform: "lever",
       slugOrUrl: lever[1],
       enabled: c.enabled !== false,
@@ -504,7 +506,7 @@ export function inferRowFromCompany(c: PortalsTrackedCompany): CompanyFormRow {
   if (gh) {
     return {
       id: newRowId(),
-      name,
+      name: displayName,
       platform: "greenhouse",
       slugOrUrl: gh[1],
       enabled: c.enabled !== false,
@@ -512,7 +514,7 @@ export function inferRowFromCompany(c: PortalsTrackedCompany): CompanyFormRow {
   }
   return {
     id: newRowId(),
-    name,
+    name: displayName,
     platform: "custom",
     slugOrUrl: url,
     enabled: c.enabled !== false,
@@ -541,9 +543,10 @@ function rowsToTrackedCompanies(rows: CompanyFormRow[]): PortalsTrackedCompany[]
   return rows
     .map((r) => {
       const careers_url = buildCareersUrl(r);
-      if (!r.name.trim() || !careers_url) return null;
+      if (!careers_url) return null;
+      const label = r.name.trim() || guessCompanyLabelFromUrl(careers_url);
       return {
-        name: r.name.trim(),
+        name: label,
         enabled: r.enabled,
         careers_url,
       };
@@ -750,7 +753,6 @@ function buildConfigFromState(args: {
 }): PortalsYamlConfig | null {
   const eff = effectiveRows(args.boardEntryMode, args.bulkPaste, args.rows);
   const tracked_companies = rowsToTrackedCompanies(eff);
-  if (tracked_companies.length === 0) return null;
 
   const title_filter = mergeTitleFilter({
     positiveLines: args.positiveLines,
@@ -762,6 +764,10 @@ function buildConfigFromState(args: {
     locationPositiveLines: args.locationPositiveLines,
     locationNegativeLines: args.locationNegativeLines,
   });
+
+  const tp = title_filter?.positive?.length ?? 0;
+  const lp = location_filter?.positive?.length ?? 0;
+  if (tracked_companies.length === 0 && tp === 0 && lp === 0) return null;
 
   const out: PortalsYamlConfig = { tracked_companies };
   if (title_filter) out.title_filter = title_filter;
@@ -921,9 +927,12 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
               return true;
           }
           return eff.some((r) => {
-            const hasName = Boolean(r.name.trim());
-            const hasBoard = Boolean(buildCareersUrl(r));
-            return (hasName && !hasBoard) || (!hasName && hasBoard);
+            const blank = !r.name.trim() && !r.slugOrUrl.trim();
+            if (blank) return false;
+            const url = buildCareersUrl(r);
+            if (r.name.trim() && !url) return true;
+            if (!url) return false;
+            return !detectPortalApi({ careers_url: url });
           });
         },
       }),
@@ -966,30 +975,29 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
       <div className="flex flex-col gap-8">
         <div className="rounded-md border bg-muted/30 px-4 py-3 space-y-3 text-sm text-muted-foreground leading-relaxed">
           <p>
-            <strong className="text-foreground">Curate employers first.</strong> Add career boards only
-            for companies you&apos;d realistically engage with—fit, legitimacy, commute or remote stance,
-            and stage matter beyond the job title alone. Matching your title plus location keywords is{" "}
-            <strong className="text-foreground">necessary, not sufficient</strong> when deciding who
-            deserves your time.
+            <strong className="text-foreground">Start with titles and locations.</strong> Optional employer
+            boards narrow which ATS sites we hit; matching title and location fragments is{" "}
+            <strong className="text-foreground">still required signal</strong> when you rely on defaults,
+            and it keeps noise down when you add your own boards.
           </p>
           <p>
-            <strong className="text-foreground">How scanning works:</strong> We fetch supported ATS
-            postings for employers you configure in Step 1. Step 2 and 4 narrow hits on our side
-            using substring filters; chat can tighten further later. No “every company globally” endpoint
-            exists.
+            <strong className="text-foreground">How scanning works:</strong> Each run pulls postings from ATS
+            boards you list in Step&nbsp;4, or — if that list is empty — from roughly{" "}
+            {DEFAULT_PORTAL_CATALOG_SIZE} built-in ATS sites. Filters use substring checks on title and
+            location strings; chat can tighten further later. No “every company globally” endpoint exists.
           </p>
           <ol className="list-decimal pl-5 space-y-1">
             <li>
-              Employers / <strong className="text-foreground">job-board URLs</strong>
+              Included <strong className="text-foreground">titles</strong> (OR semantics)
             </li>
             <li>
-              Included <strong className="text-foreground">titles</strong> (OR semantics)
+              Optional <strong className="text-foreground">location</strong> includes (and excludes)
             </li>
             <li>
               Optional title <strong className="text-foreground">excludes</strong>
             </li>
             <li>
-              Optional <strong className="text-foreground">location</strong> lines
+              Optional employers / <strong className="text-foreground">ATS board URLs</strong>
             </li>
           </ol>
           <div className="rounded-md border border-dashed bg-background/60 px-3 py-2 text-xs">
@@ -1002,7 +1010,10 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
                   checked={Boolean(pledges.pledgesEmployersCurated)}
                   onChange={(e) => setPledgeField("pledgesEmployersCurated", e.target.checked)}
                 />
-                <span>My boards list is deliberate—not every employer with any supported ATS URL.</span>
+                <span>
+                  Boards I add are deliberate; when empty I&apos;m relying on defaults with strong
+                  titles/locations—not a vague “anything goes” scrape.
+                </span>
               </label>
               <label className="flex cursor-pointer gap-2 items-start">
                 <input
@@ -1020,14 +1031,157 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
           </div>
         </div>
 
+        <div className="space-y-3 border-t pt-8">
+          <div className="flex flex-wrap items-center gap-2 gap-y-1">
+            <Badge variant="outline">Step 1</Badge>
+            <Label className="text-base font-medium">Roles — job titles to include</Label>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Primary gate for scans. Lines are combined with{" "}
+            <strong className="text-foreground">OR</strong>: the title needs at least one include match.
+            Presets bundle common phrases—not every occupational title in existence.
+          </p>
+          <Select
+            value={titlePreset}
+            onValueChange={(v) => handleTitlePreset(v as TitlePreset)}
+          >
+            <SelectTrigger className="w-full max-w-md">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(TITLE_PRESET_LABEL) as TitlePreset[]).map((k) => (
+                <SelectItem key={k} value={k}>
+                  {TITLE_PRESET_LABEL[k]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="space-y-1.5">
+            <Label htmlFor="positive-keywords" className="text-xs text-muted-foreground">
+              Include titles containing (one phrase per line — OR across lines)
+            </Label>
+            <Textarea
+              id="positive-keywords"
+              value={positiveLines}
+              onChange={(e) => {
+                setPositiveLines(e.target.value);
+                setTitlePreset("custom");
+              }}
+              disabled={titlePreset === "any"}
+              rows={titlePreset === "usa_wide" ? 16 : 6}
+              className="font-mono text-xs min-h-[120px]"
+              placeholder="e.g. Engineer&#10;Machine Learning"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-3 border-t pt-8">
+          <div className="flex flex-wrap items-center gap-2 gap-y-1">
+            <Badge variant="outline">Step 2</Badge>
+            <Label className="text-base font-medium">Locations</Label>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Optional hints layered on titles. Matching uses the ATS &quot;location&quot; field (substring,
+            case-insensitive). If you skip employer boards below, we substitute about{" "}
+            {DEFAULT_PORTAL_CATALOG_SIZE} default ATS postings sites—then at least one title include or location
+            line is required so the scan does not run wide open.
+          </p>
+          <Select
+            value={locationPreset}
+            onValueChange={(v) => handleLocationPreset(v as LocationPreset)}
+          >
+            <SelectTrigger className="w-full max-w-md">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(LOCATION_PRESET_LABEL) as LocationPreset[]).map((k) => (
+                <SelectItem key={k} value={k}>
+                  {LOCATION_PRESET_LABEL[k]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="space-y-1.5">
+            <Label htmlFor="location-include" className="text-xs text-muted-foreground">
+              Locations must contain (any line matches — OR logic)
+            </Label>
+            <Textarea
+              id="location-include"
+              value={locationPositiveLines}
+              onChange={(e) => {
+                setLocationPositiveLines(e.target.value);
+                setLocationPreset("custom");
+              }}
+              disabled={locationPreset === "any"}
+              rows={4}
+              className="font-mono text-xs"
+              placeholder={`e.g. Remote\nGermany`}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="location-exclude" className="text-xs text-muted-foreground">
+              Locations containing these are excluded (one per line)
+            </Label>
+            <Textarea
+              id="location-exclude"
+              value={locationNegativeLines}
+              onChange={(e) => setLocationNegativeLines(e.target.value)}
+              rows={3}
+              className="font-mono text-xs"
+              placeholder="e.g. India&#10;Australia"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-3 border-t pt-8">
+          <div className="flex flex-wrap items-center gap-2 gap-y-1">
+            <Badge variant="outline">Step 3</Badge>
+            <Label className="text-base font-medium">Roles — exclude from titles</Label>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Drop postings whose titles hit any fragment here. Applied to every scan source (employer boards
+            in Step&nbsp;4 or the default ATS list when boards are blank).
+          </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            {NEGATIVE_PRESETS.map((p) => (
+              <label
+                key={p.key}
+                className="flex items-center gap-2 text-sm cursor-pointer select-none"
+              >
+                <input
+                  type="checkbox"
+                  checked={negativePresetKeys.has(p.key)}
+                  onChange={() => toggleNegative(p.key)}
+                  className="rounded border-input"
+                />
+                {p.label}
+              </label>
+            ))}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="negative-extra" className="text-xs text-muted-foreground">
+              Extra title excludes (one per line)
+            </Label>
+            <Textarea
+              id="negative-extra"
+              value={negativeExtraLines}
+              onChange={(e) => setNegativeExtraLines(e.target.value)}
+              rows={3}
+              className="font-mono text-xs"
+              placeholder="e.g. WordPress"
+            />
+          </div>
+        </div>
+
         <section className="rounded-lg border border-border bg-muted/10 p-4 sm:p-5 space-y-3">
           <div className="flex flex-wrap items-center gap-2 gap-y-1">
-            <Badge variant="secondary">Step 1</Badge>
+            <Badge variant="secondary">Step 4</Badge>
             <Label className="text-base font-medium">Employers — job boards</Label>
           </div>
           <p className="text-sm text-muted-foreground">
-            Pick only boards you intend to monitor. Larger boards amplify noise—you still filter by titles
-            and locations below.
+            Optional. Paste only careers URLs you intentionally watch. Leave this empty and we substitute
+            about {DEFAULT_PORTAL_CATALOG_SIZE} default ATS postings sites (then Steps&nbsp;1–2 must include at
+            least one title or location keyword so scans stay narrowly scoped).
           </p>
           <Select
             value={boardEntryMode}
@@ -1097,7 +1251,8 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
             <>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm text-muted-foreground">
-                  Company label, ATS, and slug or full careers URL per row.
+                  ATS plus slug or full careers URL per row — display label is optional and auto-filled when
+                  you paste a URL.
                 </p>
                 <Button type="button" variant="outline" size="sm" onClick={addRow}>
                   <Plus className="size-4" />
@@ -1105,8 +1260,10 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
                 </Button>
               </div>
               {rows.length === 0 ? (
-                <p className="text-sm text-muted-foreground border rounded-md px-4 py-6 text-center">
-                  No boards yet. Add rows or switch to paste-many-URLs mode.
+                <p className="text-sm text-muted-foreground border rounded-md px-4 py-6 text-center leading-relaxed">
+                  No boards here — scans use the built-in ATS list (~{DEFAULT_PORTAL_CATALOG_SIZE} sites) plus
+                  your title and location rules. Add rows or switch to paste-many-URLs mode to override that
+                  with specific employers only.
                 </p>
               ) : (
                 <div className="flex flex-col gap-4">
@@ -1117,7 +1274,7 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
                     >
                       <div className="sm:col-span-3 space-y-1.5">
                         <Label className="text-xs text-muted-foreground">
-                          Display name / company
+                          Display label (optional)
                         </Label>
                         <Input
                           value={row.name}
@@ -1194,152 +1351,12 @@ export const AtsBoardsEditor = React.forwardRef<AtsBoardsEditorHandle, AtsBoards
           )}
         </section>
 
-        <div className="space-y-3 border-t pt-8">
-          <div className="flex flex-wrap items-center gap-2 gap-y-1">
-            <Badge variant="outline">Step 2</Badge>
-            <Label className="text-base font-medium">Roles — job titles to include</Label>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Further narrows postings from employers in Step 1. Lines are combined with{" "}
-            <strong className="text-foreground">OR</strong>: the title needs at least one include match.
-            Presets bundle common phrases—not every occupational title in existence.
-          </p>
-          <Select
-            value={titlePreset}
-            onValueChange={(v) => handleTitlePreset(v as TitlePreset)}
-          >
-            <SelectTrigger className="w-full max-w-md">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(Object.keys(TITLE_PRESET_LABEL) as TitlePreset[]).map((k) => (
-                <SelectItem key={k} value={k}>
-                  {TITLE_PRESET_LABEL[k]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="space-y-1.5">
-            <Label htmlFor="positive-keywords" className="text-xs text-muted-foreground">
-              Include titles containing (one phrase per line — OR across lines)
-            </Label>
-            <Textarea
-              id="positive-keywords"
-              value={positiveLines}
-              onChange={(e) => {
-                setPositiveLines(e.target.value);
-                setTitlePreset("custom");
-              }}
-              disabled={titlePreset === "any"}
-              rows={titlePreset === "usa_wide" ? 16 : 6}
-              className="font-mono text-xs min-h-[120px]"
-              placeholder="e.g. Engineer&#10;Machine Learning"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-3 border-t pt-8">
-          <div className="flex flex-wrap items-center gap-2 gap-y-1">
-            <Badge variant="outline">Step 3</Badge>
-            <Label className="text-base font-medium">Roles — exclude from titles</Label>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            If the title contains any of these fragments, drop the posting (still scoped to employers in
-            Step 1).
-          </p>
-          <div className="flex flex-wrap gap-x-4 gap-y-2">
-            {NEGATIVE_PRESETS.map((p) => (
-              <label
-                key={p.key}
-                className="flex items-center gap-2 text-sm cursor-pointer select-none"
-              >
-                <input
-                  type="checkbox"
-                  checked={negativePresetKeys.has(p.key)}
-                  onChange={() => toggleNegative(p.key)}
-                  className="rounded border-input"
-                />
-                {p.label}
-              </label>
-            ))}
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="negative-extra" className="text-xs text-muted-foreground">
-              Extra title excludes (one per line)
-            </Label>
-            <Textarea
-              id="negative-extra"
-              value={negativeExtraLines}
-              onChange={(e) => setNegativeExtraLines(e.target.value)}
-              rows={3}
-              className="font-mono text-xs"
-              placeholder="e.g. WordPress"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-3 border-t pt-8">
-          <div className="flex flex-wrap items-center gap-2 gap-y-1">
-            <Badge variant="outline">Step 4</Badge>
-            <Label className="text-base font-medium">Locations</Label>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Optional. Applies on top of whatever passes Steps 2–3. Matched against the ATS &quot;location&quot;
-            text for each posting (substring, case-insensitive). Presets are hints—not zip-code geocoding.
-          </p>
-          <Select
-            value={locationPreset}
-            onValueChange={(v) => handleLocationPreset(v as LocationPreset)}
-          >
-            <SelectTrigger className="w-full max-w-md">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(Object.keys(LOCATION_PRESET_LABEL) as LocationPreset[]).map((k) => (
-                <SelectItem key={k} value={k}>
-                  {LOCATION_PRESET_LABEL[k]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="space-y-1.5">
-            <Label htmlFor="location-include" className="text-xs text-muted-foreground">
-              Locations must contain (any line matches — OR logic)
-            </Label>
-            <Textarea
-              id="location-include"
-              value={locationPositiveLines}
-              onChange={(e) => {
-                setLocationPositiveLines(e.target.value);
-                setLocationPreset("custom");
-              }}
-              disabled={locationPreset === "any"}
-              rows={4}
-              className="font-mono text-xs"
-              placeholder={`e.g. Remote\nGermany`}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="location-exclude" className="text-xs text-muted-foreground">
-              Locations containing these are excluded (one per line)
-            </Label>
-            <Textarea
-              id="location-exclude"
-              value={locationNegativeLines}
-              onChange={(e) => setLocationNegativeLines(e.target.value)}
-              rows={3}
-              className="font-mono text-xs"
-              placeholder="e.g. India&#10;Australia"
-            />
-          </div>
-        </div>
-
         <details className="rounded-lg border bg-muted/10 text-sm">
           <summary className="cursor-pointer px-4 py-3 font-medium">
             Advanced: generated JSON (read-only)
           </summary>
           <pre className="px-4 pb-4 text-xs overflow-auto max-h-56 whitespace-pre-wrap font-mono text-muted-foreground border-t">
-            {previewJson || "(add boards + filters to preview)"}
+            {previewJson || "(add titles, locations, and optional boards to preview)"}
           </pre>
         </details>
       </div>

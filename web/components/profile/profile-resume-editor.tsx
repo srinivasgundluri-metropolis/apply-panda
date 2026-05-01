@@ -32,7 +32,11 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import type { PortalsYamlConfig, Profile } from "@/lib/types";
+import type { Profile } from "@/lib/types";
+import {
+  AtsBoardsEditor,
+  type AtsBoardsEditorHandle,
+} from "@/components/profile/ats-boards-editor";
 
 interface Props {
   initial: Profile;
@@ -115,13 +119,8 @@ export function ProfileResumeEditor({
     (initial.narrative?.deal_breakers ?? []).join("\n"),
   );
 
-  const [portalsJson, setPortalsJson] = React.useState(() => {
-    const p = initial.portals;
-    if (p && typeof p === "object") {
-      return JSON.stringify(p, null, 2);
-    }
-    return "";
-  });
+  const atsBoardsRef = React.useRef<AtsBoardsEditorHandle>(null);
+  const portalsSeed = JSON.stringify(initial.portals ?? null);
 
   const [cvMarkdown, setCvMarkdown] = React.useState(initialCvMarkdown);
 
@@ -178,27 +177,18 @@ export function ProfileResumeEditor({
         },
       };
 
-      if (portalsJson.trim() === "") {
-        if (initial.portals) {
-          payload.portals = null;
-        }
-      } else {
-        try {
-          const parsed = JSON.parse(portalsJson) as PortalsYamlConfig;
-          if (
-            !Array.isArray(parsed.tracked_companies) ||
-            parsed.tracked_companies.length === 0
-          ) {
-            throw new Error("`tracked_companies` must be a non-empty array.");
-          }
-          payload.portals = parsed;
-        } catch (err) {
-          toast.error(
-            `Portals JSON invalid: ${(err as Error).message}. Fix the Portals tab or clear the field.`,
-          );
-          setSaving(false);
-          return;
-        }
+      if (atsBoardsRef.current?.hasIncompleteCompanyRows()) {
+        toast.error(
+          "ATS boards: finish each company row (name + board slug or URL) or remove incomplete rows, then save again.",
+        );
+        setSaving(false);
+        return;
+      }
+      const portalsFromForm = atsBoardsRef.current?.getConfig() ?? null;
+      if (portalsFromForm) {
+        payload.portals = portalsFromForm;
+      } else if (initial.portals) {
+        payload.portals = null;
       }
 
       const [resProfile, resCv] = await Promise.all([
@@ -227,14 +217,7 @@ export function ProfileResumeEditor({
         throw new Error((j as { error?: string }).error ?? `CV HTTP ${resCv.status}`);
       }
 
-      const merged = profileBody.profile;
-      if (merged?.portals && typeof merged.portals === "object") {
-        setPortalsJson(JSON.stringify(merged.portals, null, 2));
-      } else {
-        setPortalsJson("");
-      }
-
-      toast.success("Profile, optional portals config, and résumé updated.");
+      toast.success("Profile, ATS boards, and résumé updated.");
       router.refresh();
     } catch (err) {
       toast.error(`Save failed: ${(err as Error).message}`);
@@ -418,27 +401,14 @@ export function ProfileResumeEditor({
                   <strong>Chat → search job boards</strong> and <strong>Pipeline → Scan job boards</strong>.
                 </p>
                 <p>
-                  Paste JSON with <code className="text-xs">tracked_companies</code> and optional{" "}
-                  <code className="text-xs">title_filter</code> — same structure as the open-source{" "}
-                  <code className="text-xs">portals.yml</code> in career-ops. There is no shared default
-                  list. Clear the field and save only if you intend to remove the list; scans will
-                  prompt you to configure boards again.
+                  Use the form below — no JSON required. We save the same structure the scanner expects
+                  (including <code className="text-xs">title_filter</code>). To remove all boards,
+                  delete every company row and save.
                 </p>
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Textarea
-                value={portalsJson}
-                onChange={(e) => setPortalsJson(e.target.value)}
-                spellCheck={false}
-                className="min-h-[420px] font-mono text-xs leading-relaxed"
-                placeholder={`{
-  "title_filter": { "positive": ["Engineer"], "negative": ["Intern"] },
-  "tracked_companies": [
-    { "name": "Example", "enabled": true, "careers_url": "https://jobs.ashbyhq.com/example" }
-  ]
-}`}
-              />
+              <AtsBoardsEditor ref={atsBoardsRef} portalsSeed={portalsSeed} />
             </CardContent>
           </Card>
         </TabsContent>

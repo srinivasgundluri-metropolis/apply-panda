@@ -61,10 +61,20 @@ function deepMerge(
 export async function writeProfile(updates: Profile): Promise<Profile> {
   const existing = await readProfile();
 
-  const merged = deepMerge(
-    { ...(existing as Record<string, unknown>) },
-    updates as Record<string, unknown>,
-  );
+  const existingRec = { ...(existing as Record<string, unknown>) };
+  const updatesRec = { ...(updates as Record<string, unknown>) };
+
+  /**
+   * `portals` is always a full snapshot from the profile editor (tracked_companies +
+   * optional filters). Deep-merging it into the prior value would keep removed keys
+   * (e.g. cleared `company_filter` or title/location negatives).
+   */
+  if (Object.prototype.hasOwnProperty.call(updatesRec, "portals")) {
+    existingRec.portals = updatesRec.portals;
+    delete updatesRec.portals;
+  }
+
+  const merged = deepMerge(existingRec, updatesRec);
 
   const supabase = await createSupabaseServerClient();
   const {

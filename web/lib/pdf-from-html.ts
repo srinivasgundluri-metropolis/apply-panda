@@ -5,9 +5,42 @@
  */
 
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
 import type { Browser } from "puppeteer-core";
+
+/** Args that help flaky headless launches (local + thin containers). */
+const LOCAL_LAUNCH_EXTRA = [
+  "--disable-gpu",
+  "--disable-software-rasterizer",
+] as const;
+
+/**
+ * Sparticuz's default `executablePath()` uses `join(__dirname, '..', 'bin')`. Inside a Next.js
+ * server bundle, `__dirname` often points at `.next/server/...`, so `bin/` is missing and
+ * Puppeteer dies with “Failed to launch the browser process!”. Resolve the real package path.
+ */
+function tryResolveSparticuzBinDir(): string | null {
+  try {
+    const here = fileURLToPath(import.meta.url);
+    const rq = createRequire(here);
+    const pkgJson = rq.resolve("@sparticuz/chromium/package.json");
+    const binDir = join(dirname(pkgJson), "bin");
+    if (existsSync(binDir)) return binDir;
+  } catch {
+    // fall through to cwd-relative
+  }
+  const cwdBin = join(
+    process.cwd(),
+    "node_modules",
+    "@sparticuz",
+    "chromium",
+    "bin",
+  );
+  return existsSync(cwdBin) ? cwdBin : null;
+}
 
 /**
  * Sparticuz ships a Linux Chromium for Lambda-sized runtimes — not for laptops.
@@ -47,12 +80,29 @@ function localChromeCandidatePaths(): string[] {
     out.push(
       "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
       "/Applications/Google Chrome Beta.app/Contents/MacOS/Google Chrome Beta",
+      "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
       "/Applications/Chromium.app/Contents/MacOS/Chromium",
+      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+      "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+      "/opt/homebrew/bin/chromium",
+      "/usr/local/bin/chromium",
+      "/usr/local/bin/chrome",
     );
   } else if (process.platform === "win32") {
     const localAppData = process.env.LOCALAPPDATA;
     if (localAppData) {
       out.push(join(localAppData, "Google", "Chrome", "Application", "chrome.exe"));
+      out.push(join(localAppData, "Microsoft", "Edge", "Application", "msedge.exe"));
+    }
+    const pf = process.env["ProgramFiles"];
+    const pf86 = process.env["ProgramFiles(x86)"];
+    if (pf) {
+      out.push(join(pf, "Google", "Chrome", "Application", "chrome.exe"));
+      out.push(join(pf, "Microsoft", "Edge", "Application", "msedge.exe"));
+    }
+    if (pf86) {
+      out.push(join(pf86, "Google", "Chrome", "Application", "chrome.exe"));
+      out.push(join(pf86, "Microsoft", "Edge", "Application", "msedge.exe"));
     }
     out.push("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe");
     out.push(
@@ -62,9 +112,11 @@ function localChromeCandidatePaths(): string[] {
     out.push(
       "/usr/bin/google-chrome-stable",
       "/usr/bin/google-chrome",
-      "/snap/bin/chromium",
       "/usr/bin/chromium",
+      "/snap/bin/chromium",
       "/usr/bin/chromium-browser",
+      "/usr/bin/microsoft-edge",
+      "/usr/bin/microsoft-edge-stable",
     );
   }
   return out;
@@ -93,17 +145,20 @@ async function launchLocalChromeBrowser(): Promise<Browser> {
   const headlessAttempts: ReadonlyArray<true | "shell"> = [true, "shell"];
   const errors: string[] = [];
 
+  const baseArgs = [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    ...LOCAL_LAUNCH_EXTRA,
+  ];
+
   for (const exe of paths) {
     for (const headless of headlessAttempts) {
       try {
         return await puppeteer.launch({
           executablePath: exe,
           headless,
-          args: [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-          ],
+          args: [...baseArgs],
         });
       } catch (e) {
         errors.push(
@@ -114,29 +169,34 @@ async function launchLocalChromeBrowser(): Promise<Browser> {
   }
 
   throw new Error(
-    `Cannot start Chrome/Chromium for PDF. Tried:\n${errors.map((x) => `  - ${x}`).join("\n")}\n` +
-      `Set PUPPETEER_EXECUTABLE_PATH to your Chrome or Chromium binary and retry.`,
+    `Cannot start Chrome/Chromium/Edge for PDF. Tried:\n${errors.map((x) => `  - ${x}`).join("\n")}\n` +
+      `Install a Chromium-based browser or set PUPPETEER_EXECUTABLE_PATH to its binary.`,
   );
 }
 
 export async function launchPdfBrowser(): Promise<Browser> {
   if (shouldUseBundledLambdaChromium()) {
     const chromium = (await import("@sparticuz/chromium")).default;
+    const binDir = tryResolveSparticuzBinDir();
     try {
+      const executablePath = binDir
+        ? await chromium.executablePath(binDir)
+        : await chromium.executablePath();
       return await puppeteer.launch({
         args: chromium.args,
         defaultViewport: chromium.defaultViewport,
-        executablePath: await chromium.executablePath(),
+        executablePath,
         headless: chromium.headless,
       });
     } catch (e) {
+      const binHint = binDir ? ` Resolved @sparticuz/chromium/bin at ${binDir}.` : " Used default chromium.executablePath (check Vercel build includes node_modules/@sparticuz/chromium/bin).";
       const inner = (e as Error).message ?? String(e);
       const archHint =
         process.arch === "arm64"
-          ? " This project uses x86 Sparticuz builds; ARM serverless regions need a different PDF approach."
+          ? " Vercel ARM functions are not compatible with this Sparticuz x86 Chromium build."
           : "";
       throw new Error(
-        `${inner} (Vercel PDF: assign ≥1024MB function memory or align puppeteer-core with @sparticuz/chromium.${archHint})`,
+        `${inner}${binHint}${archHint} Bump function memory in Vercel (see web/vercel.json), or set APPLYPANDA_FORCE_LOCAL_CHROME=1 and PUPPETEER_EXECUTABLE_PATH on a machine with Chrome.`,
       );
     }
   }

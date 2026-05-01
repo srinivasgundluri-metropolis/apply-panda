@@ -40,7 +40,7 @@ export async function GET() {
           const candidates = ranked.slice(0, HOSTED_SCAN_MATCH_LIMIT);
           send(
             "stdout",
-            `Boards queried: ${companiesScanned} · matches (ranked newest-first): ${ranked.length} · saving top ${HOSTED_SCAN_MATCH_LIMIT}: ${candidates.length}`,
+            `Boards queried: ${companiesScanned} · matches after filters: ${ranked.length} · saving up to ${HOSTED_SCAN_MATCH_LIMIT} newest: ${candidates.length}`,
           );
 
           const { data: existingRows, error: existingErr } = await auth.supabase
@@ -67,7 +67,10 @@ export async function GET() {
             if (insertErr) throw insertErr;
           }
 
-          send("stdout", `New offers added to scan history: ${toInsert.length}`);
+          send(
+            "stdout",
+            `New rows added to Scan results: ${toInsert.length} (URLs already in history are skipped; total matches above were ${ranked.length}).`,
+          );
           send("done", 0);
         } catch (e) {
           send("error", (e as Error).message);

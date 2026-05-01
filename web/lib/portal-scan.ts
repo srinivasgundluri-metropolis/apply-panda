@@ -347,8 +347,14 @@ function hasPositiveKeywords(filter: { positive?: string[] } | undefined): boole
 
 /**
  * Location filtering in third-party APIs is noisy: many rows have empty or
- * non-standard location strings. When the user sets positive location phrases,
- * keep rows with unknown location instead of dropping everything.
+ * non-standard location strings.
+ *
+ * - **No location positives:** empty job location must still pass (use `checker("")`
+ *   so negatives-only rules apply). Previously we returned `false` here and dropped
+ *   almost every row because ATS feeds often omit `location`.
+ * - **Location positives set:** keep rows with unknown/empty location (don’t require a
+ *   substring match on blank). When the job has text but it doesn’t match the user’s
+ *   metro phrases, still allow common **Remote / Hybrid / Anywhere** wording.
  */
 function locationPassWithUnknownAllowed(
   locationText: string,
@@ -356,8 +362,15 @@ function locationPassWithUnknownAllowed(
   checker: (text: string) => boolean,
 ): boolean {
   const text = locationText.trim();
-  if (text) return checker(text);
-  return hasPositiveKeywords(locationFilter);
+  if (!text) {
+    if (!hasPositiveKeywords(locationFilter)) {
+      return checker("");
+    }
+    return true;
+  }
+  if (checker(text)) return true;
+  if (!hasPositiveKeywords(locationFilter)) return false;
+  return /\b(remote|hybrid|work\s+from\s+home|wfh|anywhere|worldwide)\b/i.test(text.toLowerCase());
 }
 
 function positiveLineCount(lines: string[] | undefined): number {

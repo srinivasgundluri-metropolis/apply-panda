@@ -1,5 +1,8 @@
 -- Private bucket `documents` — run in Supabase SQL editor AFTER the bucket exists.
 -- Object paths must be `{auth.uid()}/...` (first folder = user id) for RLS below.
+--
+-- MIME errors on upload (“mime type … is not supported”): widen or clear the bucket
+-- allow-list — see alter-storage-documents-bucket-mime.sql (dashboard: Storage → documents → configuration).
 
 drop policy if exists "documents_read_own" on storage.objects;
 create policy "documents_read_own"

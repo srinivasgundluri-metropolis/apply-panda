@@ -6,7 +6,7 @@ This document describes production setup for hosted ApplyPanda (Vercel + Supabas
 
 1. Create a Supabase project.
 2. In SQL editor, run `web/supabase/schema.sql`.
-3. Create a storage bucket named `documents` (private).
+3. Create a storage bucket named `documents` (private). If you configure **allowed MIME types**, include at least **PDF, DOCX, and generic binary** (`application/octet-stream` — covers HTML-printable fallbacks keyed as `.html`) or leave the list unrestricted. If uploads fail with “mime type … is not supported”, run **`web/supabase/alter-storage-documents-bucket-mime.sql`** once or relax types in Dashboard → Storage → `documents`.
 4. In the SQL editor, run `web/supabase/storage-documents-policies.sql` so authenticated users can read/write objects under `{their_user_id}/…` (required for tailored draft uploads).
 5. In Auth settings, configure email auth (password + optional confirmation).
 

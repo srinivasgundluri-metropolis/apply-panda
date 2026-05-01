@@ -44,7 +44,9 @@ async function uploadTailoredArtifact(params: UploadTailoredArtifactParams) {
 
   if (upErr) {
     throw new Error(
-      `Upload failed (${contentType.split(";")[0]}): ${upErr.message}. Ensure Storage policies allow ${userId}/ (see web/supabase/storage-documents-policies.sql).`,
+      `Upload failed (${contentType.split(";")[0]}): ${upErr.message}. ` +
+        `Check RLS (web/supabase/storage-documents-policies.sql) and bucket MIME rules ` +
+        `(web/supabase/alter-storage-documents-bucket-mime.sql). Path prefix: ${userId}/`,
     );
   }
 
@@ -80,7 +82,13 @@ export async function uploadUserPdf(params: {
   });
 }
 
-/** Printable HTML when headless PDF is unavailable (open in browser → Print → Save as PDF). */
+/**
+ * Printable HTML when headless PDF is unavailable (open in browser → Print → Save as PDF).
+ *
+ * Stored as generic binary MIME so restrictive buckets (`application/pdf` only, etc.)
+ * don’t reject the upload — `/api/files/...` still serves `.html` with `Content-Type:
+ * text/html` from the file extension (see MIME_BY_EXT there).
+ */
 export async function uploadUserTailoredHtml(params: {
   supabase: SupabaseClient;
   userId: string;
@@ -99,7 +107,7 @@ export async function uploadUserTailoredHtml(params: {
     displayName: params.displayName,
     kind: params.kind,
     metadata: params.metadata,
-    contentType: "text/html; charset=utf-8",
+    contentType: "application/octet-stream",
   });
 }
 

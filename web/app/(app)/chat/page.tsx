@@ -12,7 +12,7 @@ export default async function ChatPage() {
     <>
       <PageHeader
         title="AI Chat"
-        description="Ask about jobs on LinkedIn (guest search), your tracker and reports, or your profile—with optional résumé coach to persist edits. Inline evaluation runs when jobs are listed."
+        description="Conversational help for job hunts, tracker, and profile—with live LinkedIn + ATS rows injected when your message reads like a job search. Toggle instant tables if you want raw results without an LLM reply. Résumé coach can persist edits."
       />
       <div className="px-8 py-6 flex-1 min-h-0 flex flex-col">
         <ChatPanel

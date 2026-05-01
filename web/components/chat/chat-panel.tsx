@@ -13,6 +13,13 @@ import { JobActions } from "@/components/chat/job-actions";
 import { RecentSearches } from "@/components/chat/recent-searches";
 import { SseStream } from "@/components/sse-stream";
 import { extractJobsBlock } from "@/lib/jobs-block";
+import {
+  parseJobSearchIntent,
+  applyPostFilters,
+  buildAppliedFilterNote,
+  isLikelyJobSearchIntent,
+  type ParsedJobSearchIntent,
+} from "@/lib/job-search-intent";
 import { cn } from "@/lib/utils";
 import type {
   LinkedInResponse,
@@ -106,130 +113,6 @@ function formatInlineCode(s: string): string {
   return `\`${t.replace(/`/g, "'")}\``;
 }
 
-type ParsedJobSearchIntent = {
-  query: string;
-  wantsLinkedIn: boolean;
-  wantsAtsBoards: boolean;
-  timeRange: "24h" | "week" | "month" | "any";
-  maxAgeHours?: number;
-  companyNeedles: string[];
-  domainNeedles: string[];
-};
-
-function parseJobSearchIntent(text: string): ParsedJobSearchIntent {
-  const raw = text.trim();
-  const lower = raw.toLowerCase();
-  const wantsLinkedIn = /\blinked[\s-]?in\b/i.test(raw);
-  const wantsAtsBoards =
-    /\b(stanford jobs|stanford careers|jobs site|career site|greenhouse|ashby|lever|workday|ats)\b/i.test(
-      raw,
-    );
-
-  let timeRange: ParsedJobSearchIntent["timeRange"] = "any";
-  let maxAgeHours: number | undefined;
-  if (
-    /\byesterday\b/i.test(raw) ||
-    /\blast\s*24\s*(h|hr|hrs|hour|hours)\b/i.test(raw) ||
-    /\bin\s*last\s*24\s*(h|hr|hrs|hour|hours)\b/i.test(raw)
-  ) {
-    timeRange = "24h";
-    maxAgeHours = 24;
-  } else if (
-    /\b(last|past)\s*(7\s*(d|day|days)|week)\b/i.test(raw) ||
-    /\bthis week\b/i.test(raw)
-  ) {
-    timeRange = "week";
-    maxAgeHours = 24 * 7;
-  } else if (/\b(last|past)\s*(30\s*(d|day|days)|month)\b/i.test(raw)) {
-    timeRange = "month";
-    maxAgeHours = 24 * 30;
-  }
-
-  const companyNeedles: string[] = [];
-  if (/\bstanford\b/i.test(raw)) companyNeedles.push("stanford");
-
-  const domainNeedles: string[] = [];
-  if (
-    /\blife[\s-]?sciences?\b/i.test(raw) ||
-    /\bbiotech\b/i.test(raw) ||
-    /\bbiolog(y|ical)\b/i.test(raw) ||
-    /\bgenomics?\b/i.test(raw) ||
-    /\bbiomedical\b/i.test(raw) ||
-    /\bpharma\b/i.test(raw)
-  ) {
-    domainNeedles.push(
-      "life science",
-      "life sciences",
-      "biotech",
-      "biology",
-      "biological",
-      "genomics",
-      "biomedical",
-      "pharma",
-    );
-  }
-
-  let query = raw
-    .replace(/\bon\s+linkedin\b/gi, " ")
-    .replace(/\bon\s+[^,.\n]*jobs?\s+site\b/gi, " ")
-    .replace(/\b(last|past)\s*(24\s*(h|hr|hrs|hour|hours)|7\s*(d|day|days)|week|30\s*(d|day|days)|month)\b/gi, " ")
-    .replace(/\byesterday\b/gi, " ")
-    .replace(/\bthis week\b/gi, " ")
-    .replace(/\bstanford\b/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!query) query = raw;
-
-  return {
-    query,
-    wantsLinkedIn,
-    wantsAtsBoards,
-    timeRange,
-    ...(maxAgeHours ? { maxAgeHours } : {}),
-    companyNeedles,
-    domainNeedles,
-  };
-}
-
-function applyPostFilters(
-  jobs: LinkedInResult[],
-  intent: ParsedJobSearchIntent,
-): LinkedInResult[] {
-  const now = Date.now();
-  return jobs.filter((job) => {
-    const hay = `${job.company} ${job.title} ${job.url}`.toLowerCase();
-    if (
-      intent.companyNeedles.length > 0 &&
-      !intent.companyNeedles.some((needle) => hay.includes(needle))
-    ) {
-      return false;
-    }
-    if (
-      intent.domainNeedles.length > 0 &&
-      !intent.domainNeedles.some((needle) => hay.includes(needle))
-    ) {
-      return false;
-    }
-    if (intent.maxAgeHours) {
-      const t = Date.parse(job.posted || "");
-      if (!Number.isFinite(t)) return false;
-      const ageHours = (now - t) / (1000 * 60 * 60);
-      if (ageHours > intent.maxAgeHours) return false;
-    }
-    return true;
-  });
-}
-
-function buildAppliedFilterNote(intent: ParsedJobSearchIntent): string {
-  const bits: string[] = [];
-  if (intent.maxAgeHours) bits.push(`time <= ${intent.maxAgeHours}h`);
-  if (intent.companyNeedles.length > 0)
-    bits.push(`company: ${intent.companyNeedles.join(", ")}`);
-  if (intent.domainNeedles.length > 0) bits.push("domain: life sciences");
-  if (bits.length === 0) return "";
-  return `\n\n**Applied filters:** ${bits.join(" · ")}`;
-}
-
 function buildLinkedInSearchReply(
   data: LinkedInResponse,
   jobsOverride?: LinkedInResult[],
@@ -256,7 +139,7 @@ function buildLinkedInSearchReply(
       content:
         lines.join("\n") +
         (filterNote ?? "") +
-        "\n\n_No postings returned. Broaden keywords, try another location phrase, toggle **LinkedIn search first** off and ask for strategy—or run an ATS scan from **Pipeline → Run scan**._",
+        "\n\n_No postings returned. Broaden keywords or add a Profile location hint—or use normal chat so the assistant can summarize; run **Pipeline → Run scan** for a full ATS sweep._",
       jobs: [],
     };
   }
@@ -309,12 +192,6 @@ function buildPortalSearchReply(
     content: `${lines.join("\n")}${filterNote ?? ""}\n\n${header}\n${rows.join("\n")}`,
     jobs,
   };
-}
-
-function isLikelyJobSearchIntent(text: string): boolean {
-  return /\b(job|jobs|role|roles|opening|openings|posted|hiring|career|careers|linkedin|greenhouse|ashby|lever|workday|last\s+\d+\s*(h|hr|hrs|hour|hours|day|days)|yesterday)\b/i.test(
-    text,
-  );
 }
 
 function loadHistory(): ChatMessage[] {
@@ -375,7 +252,7 @@ export function ChatPanel({
     null,
   );
   const [evalKey, setEvalKey] = React.useState(0);
-  const [linkedInSearchFirst, setLinkedInSearchFirst] = React.useState(true);
+  const [linkedInSearchFirst, setLinkedInSearchFirst] = React.useState(false);
   const [linkedInSearching, setLinkedInSearching] = React.useState(false);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   // Without this guard, the first persist effect ran while `history` was still
@@ -968,7 +845,7 @@ export function ChatPanel({
                 <p className="text-sm text-muted-foreground max-w-md mt-1">
                   {resumeCoachMode
                     ? "Describe changes, upload a résumé file (`.docx/.md/.txt`) for conversion, or both — the coach merges into your workspace using your configured model."
-                    : "Normal chat works by default for profile/tracker/questions. With **LinkedIn search first** on, job-search asks automatically use LinkedIn guest search and ATS board search when relevant. Results are real URLs you can ⚡ Evaluate."}
+                    : "**Normal chat is default:** ask in plain language (“Stanford research assistant roles posted in the last 3 days”); the model answers conversationally while the server attaches real listings when it detects a job search. Turn on **Instant job tables** only if you want raw LinkedIn/ATS tables without an LLM reply."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 justify-center max-w-2xl mt-2">
@@ -1026,9 +903,11 @@ export function ChatPanel({
             />
           ) : streaming || linkedInSearching ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />
+                  <Loader2 className="size-4 animate-spin" />
               <span>
-                {linkedInSearching ? "Searching LinkedIn…" : "thinking…"}
+                {linkedInSearching
+                  ? "Fetching job listings…"
+                  : "thinking…"}
               </span>
             </div>
           ) : null}
@@ -1064,22 +943,22 @@ export function ChatPanel({
               />
               <span className="text-xs text-muted-foreground leading-snug">
                 <span className="font-medium text-foreground">
-                  LinkedIn search first
+                  Instant job tables
                 </span>{" "}
-                — in normal chat, detects job-search asks and uses LinkedIn guest Jobs API (and ATS boards when requested)
+                — skips the LLM on job-flavored prompts and fills the thread with LinkedIn guest + ATS tables (respects phrases like “on LinkedIn” vs “Stanford Careers” when you narrow the source).
                 {profileLocationHint ? (
                   <>
                     {" "}
-                    and your Profile location (
+                    Location hint (
                     <span className="font-mono text-[10px]">
                       {profileLocationHint.length > 40
                         ? `${profileLocationHint.slice(0, 38)}…`
                         : profileLocationHint}
                     </span>
-                    )
+                    ){" "}
                   </>
                 ) : null}
-                . Off = always pure chat (no automatic job-search tool calls).
+                used for LinkedIn geographic parameter. Leave off for simple conversational replies (still grounded with live URLs when detected).
               </span>
             </label>
           ) : null}
@@ -1156,8 +1035,8 @@ export function ChatPanel({
                 resumeCoachMode
                   ? "e.g. Instructions to merge into your uploaded resume import, or type-only edits (Skills, headline…)"
                     : linkedInSearchFirst
-                    ? "Ask normally; job-search asks auto-use LinkedIn/ATS tools (e.g. 'Stanford life sciences jobs in last 24h')"
-                    : "Ask about your tracker/reports, profile fit, LinkedIn About/headline, negotiation…"
+                    ? "Job-search prompts show raw LinkedIn/ATS tables instantly (e.g. 'Stanford life sciences roles last 24h on LinkedIn')"
+                    : "e.g. Stanford research assistant jobs posted in the last 3 days, or tracker / negotiation / headline help…"
               }
               value={input}
               onChange={(e) => setInput(e.target.value)}

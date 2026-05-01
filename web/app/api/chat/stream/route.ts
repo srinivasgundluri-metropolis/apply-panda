@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { readProfile, candidateFirstName } from "@/lib/profile";
 import { requireApiUser } from "@/lib/supabase/api";
 import { buildChatPrompt } from "@/lib/prompts";
+import { isLikelyJobSearchIntent } from "@/lib/job-search-intent";
+import { gatherLiveJobListingMarkdown } from "@/lib/chat-job-context";
 import { sanitizePlaceholderLinkedInUrls } from "@/lib/job-url";
 import {
   runGeminiPromptWithFallback,
@@ -52,7 +54,21 @@ export async function POST(req: NextRequest) {
 
   const profile = await readProfile();
   const first = candidateFirstName(profile);
-  const prompt = buildChatPrompt(message, body.history ?? [], first);
+  const locationHint = profile.candidate?.location?.trim() || undefined;
+
+  let liveJobListingContext: string | undefined;
+  if (isLikelyJobSearchIntent(message)) {
+    liveJobListingContext = await gatherLiveJobListingMarkdown({
+      message,
+      locationHint,
+      supabase: auth.supabase,
+      userId: auth.user.id,
+    });
+  }
+
+  const prompt = buildChatPrompt(message, body.history ?? [], first, {
+    liveJobListingContext,
+  });
   const primaryModel =
     body.model?.trim() ||
     process.env.OPENAI_MODEL?.trim() ||

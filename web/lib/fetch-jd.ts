@@ -141,7 +141,7 @@ async function fetchAshbyPostingViaApi(params: {
     const title = String(job.title ?? "").trim();
     const descriptionPlain = String(job.descriptionPlain ?? "").trim();
     const descriptionHtml = String(job.descriptionHtml ?? "");
-    let body =
+    const body =
       descriptionPlain ||
       (descriptionHtml ? stripHtml(descriptionHtml) : "");
 

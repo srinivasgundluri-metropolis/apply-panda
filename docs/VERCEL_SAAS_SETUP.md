@@ -36,7 +36,7 @@ Set these in Vercel Project Settings -> Environment Variables:
 - Install command: `npm install`
 - Build command: `npm run build`
 
-**Tailored PDFs** (`/api/docs/generate`): on **deployed** Vercel (Linux) this uses `puppeteer-core` + `@sparticuz/chromium`. On **`vercel dev`** locally, Chrome must be installed (same as `pnpm dev`): the Lambda Chromium bundle does not run on macOS/Windows. Prefer **Pro** (or higher) with **≥120s** function duration and **≥1024 MB** memory so “CV + letter” runs don’t time out. Hobby’s 60 s limit may fail on **Generate both**.
+**Tailored PDFs** (`/api/docs/generate`): on **deployed** Vercel (Linux, `VERCEL_ENV` `preview`|`production`) this uses `puppeteer-core` + `@sparticuz/chromium`. **`vercel dev`** is detected via `VERCEL_REGION=dev1` and/or missing preview/production env — Chrome/Chromium must exist locally; set **`PUPPETEER_EXECUTABLE_PATH`** if Chrome is non-standard. If you copied hosted env vars locally and Chromium still launches the Lambda bundle, set **`APPLYPANDA_FORCE_LOCAL_CHROME=1`**. Prefer **Pro** (or higher) with **≥120s** function duration and **≥1024 MB** memory so “CV + letter” runs don’t time out. Hobby’s 60 s limit may fail on **Generate both**. If production still logs “Failed to launch the browser process”, bump function memory and confirm the runtime is **x86** (Sparticuz is not suited to ARM Lambda).
 
 ## 4) Smoke checklist
 

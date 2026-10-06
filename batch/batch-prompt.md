@@ -241,7 +241,8 @@ node generate-pdf.mjs \
 
 **Reglas ATS:**
 - Single-column (sin sidebars)
-- Headers estándar: "Professional Summary", "Work Experience", "Education", "Skills", "Certifications", "Projects"
+- Orden físico del template (`cv-template.html`): **Technical Skills** (`{{SECTION_SKILLS}}`) justo después del header, luego Professional Summary, Core Competencies, Experience, Projects, Education, Certifications.
+- Headers estándar incluyen Technical Skills arriba, luego Summary, Competencies, etc.
 - Sin texto en imágenes/SVGs
 - Sin info crítica en headers/footers
 - UTF-8, texto seleccionable

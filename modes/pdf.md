@@ -24,7 +24,7 @@
 ## Reglas ATS (parseo limpio)
 
 - Layout single-column (sin sidebars, sin columnas paralelas)
-- Headers estándar: "Professional Summary", "Work Experience", "Education", "Skills", "Certifications", "Projects"
+- Headers estándar (orden en página): "**Technical Skills**" (bloque `{{SECTION_SKILLS}}`) primero bajo el encabezado, luego "Professional Summary", "Core Competencies", "Work Experience", "Education", "Projects", "Certifications". En `templates/cv-template.html` el orden físico ya fija Skills arriba.
 - Sin texto en imágenes/SVGs
 - Sin info crítica en headers/footers del PDF (ATS los ignora)
 - UTF-8, texto seleccionable (no rasterizado)
@@ -46,12 +46,13 @@
 ## Orden de secciones (optimizado "6-second recruiter scan")
 
 1. Header (Nombre centrado, contacto centrado)
-2. Professional Summary (3-4 líneas, keyword-dense, justificado)
-3. Core Competencies (6-8 keyword phrases con separadores de punto medio)
-4. Work Experience (cronológico inverso, fechas a la derecha)
-5. Projects (top 3-4 más relevantes, fechas a la derecha)
-6. Education (títulos en negrita, fechas a la derecha)
-7. Certifications & Skills (formato lista limpia)
+2. **Technical Skills** (`{{SECTION_SKILLS}}` / `{{SKILLS}}`) — **siempre inmediatamente bajo el header**, antes del resumen y del resto (stack, lenguajes, herramientas alineadas al JD).
+3. Professional Summary (3-4 líneas, keyword-dense, justificado)
+4. Core Competencies (6-8 keyword phrases con separadores de punto medio)
+5. Work Experience (cronológico inverso, fechas a la derecha)
+6. Projects (top 3-4 más relevantes, fechas a la derecha)
+7. Education (títulos en negrita, fechas a la derecha)
+8. Certifications (formato lista limpia; no mover el bloque de skills técnico debajo de experiencia)
 
 ## Estrategia de keyword injection (ético, basado en verdad)
 
@@ -90,7 +91,7 @@ Usar el template en `cv-template.html`. Reemplazar los placeholders `{{...}}` co
 | `{{EDUCATION}}` | HTML de educación |
 | `{{SECTION_CERTIFICATIONS}}` | Certifications / Certificaciones |
 | `{{CERTIFICATIONS}}` | HTML de certificaciones |
-| `{{SECTION_SKILLS}}` | Skills / Competencias |
+| `{{SECTION_SKILLS}}` | Technical Skills / Habilidades técnicas — título visible; ubicación **fija**: primera sección después del header en `cv-template.html` |
 | `{{SKILLS}}` | HTML de skills |
 
 ## Canva CV Generation (optional)

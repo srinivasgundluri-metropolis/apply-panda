@@ -123,7 +123,7 @@ All text content MUST be escaped for LaTeX before insertion:
 ## ATS Rules (same as pdf mode)
 
 - Single-column layout (enforced by template)
-- Standard section headers: Education, Work Experience, Personal Projects, Technical Skills
+- Physical section order in `templates/cv-template.tex`: **Technical Skills** immediately after heading, then Education, Work Experience, Personal Projects
 - UTF-8, machine-readable via `\pdfgentounicode=1`
 - Keywords distributed: first bullet of each role, skills section
 - No images, no graphics, no color in body text

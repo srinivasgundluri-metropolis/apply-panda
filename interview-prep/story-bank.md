@@ -76,6 +76,49 @@ This file accumulates your best interview stories over time. Each evaluation (Bl
 **Reflection:** Training others forces you to **write SOPs in your head** — useful in shared core facilities.
 **Best for questions about:** orienting new students, teamwork, communication
 
+### [Protocol QA] ECM substrate stability for longitudinal mechanobiology
+**Source:** Report #006 — Broad Institute — RA I (ECR pipeline)
+**S (Situation):** Valve mechanobiology readouts depended on consistent substrate mechanics over multi-day cultures.
+**T (Task):** Stop collapse artifacts that polluted signaling comparisons across lines.
+**A (Action):** Iterated gel formulation/handling checkpoints; standardized imaging harvest windows.
+**R (Result):** Unlocked reliable stiffness-dependent assays across lines previously failing QC.
+**Reflection:** Fixing “invisible substrate drift” beats re-running expensive animal cohorts downstream.
+**Best for questions about:** troubleshooting ambiguous biology, meticulous lab ops, transferable core-facility mindset
+
+### [Screening discipline] Plate-based dose response for phenotype-linked targets
+**Source:** Report #006 — Broad Institute — RA I (ECR pipeline)
+**S (Situation):** Polyphenol library created noisy early hits without disciplined titration.
+**T (Task):** Identify reproducible modulation of target expression.
+**A (Action):** Grid dosing; duplicate plates; orthogonal readouts tying expression to phenotype proxies.
+**R (Result):** Lead concentrations stabilized around biologically plausible effect sizes.
+**Reflection:** Screen integrity is bookkeeping + statistics, not glamour reagents alone.
+**Best for questions about:** high-throughput-lite workflows at academic scale, reproducibility narratives
+
+### [Cross-functional handoff] Preparing immaculate inputs before computational partnering
+**Source:** Report #006 — Broad Institute — RA I (ECR pipeline)
+**S (Situation):** Imaging quant needed for interpretable phenotype maps feeding downstream analysis discussions.
+**T (Task):** Reduce ambiguous variance that would waste bioinformatics cycles.
+**A (Action):** Batch-level ImageJ pipelines with written acquisition settings; flagged outliers early.
+**R (Result):** Faster convergence on plausible biological explanations vs chasing noise.
+**Reflection:** Computational collaborators reward labs that obsess over acquisition metadata parity.
+**Best for questions about:** computational collaboration humility, modernization curiosity
+
+### [Lab stewardship] Regulated animal program + shared assay QC (inventory mindset)
+**Source:** Report #007 — Mount Sinai Health System — Associate Researcher I (Zangi Lab / CVRI)
+**S (Situation):** Longitudinal cardiovascular mouse work required reliable cohort availability without compliance drift; shared assays needed consistent consumables handling.
+**T (Task):** Keep animal operations auditable while improving group-wide assay comparability.
+**A (Action):** Authored/revised IACUC protocols; standardized ELISA/ALP workflows; validated custom antibody batches with disciplined documentation.
+**R (Result):** More predictable longitudinal experiments and comparable datasets across trainees.
+**Reflection:** Stewardship signals are **protocol + batches + paperwork hygiene** — not separate from rigor.
+
+### [Relocation / framing] Pivoting geography for institute-specific cardiovascular bench fit
+**Source:** Report #007 — Mount Sinai Health System — Associate Researcher I (Zangi Lab / CVRI)
+**S (Situation):** Competing offers across cities with similar bench titles but differing scientific adjacency.
+**T (Task):** Explain relocation motivation without diminishing prior training sites.
+**A (Action):** Lead with institute + scientific adjacency (**CVRI** + mechanobiology depth) vs generic prestige language.
+**R (Result):** Clearer interviewer confidence you are choosing **scientific proximity**, not default applying.
+**Reflection:** Geography answers should cite **research problems**, then logistics.
+
 <!-- Stories will be added here as you evaluate offers -->
 <!-- Format:
 ### [Theme] Story Title

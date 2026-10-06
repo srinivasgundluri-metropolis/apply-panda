@@ -170,8 +170,9 @@ export function buildCvPrompt(
     );
   }
   lines.push(
-    "4. For EACH variant write a temp HTML → run `node generate-pdf.mjs <file.html> <output.pdf>` for both paths above (letter/a4 per pdf.md rules).",
-    "5. Print one line exactly: `DONE: ats=<path> full=<path>` listing both PDF paths.",
+    "4. **Section order:** In generated HTML based on `templates/cv-template.html`, keep **Technical Skills** (`{{SECTION_SKILLS}}` / `{{SKILLS}}`) **immediately under the header** — before Summary and Core Competencies. Do not move that block down the page.",
+    "5. For EACH variant write a temp HTML → run `node generate-pdf.mjs <file.html> <output.pdf>` for both paths above (letter/a4 per pdf.md rules).",
+    "6. Print one line exactly: `DONE: ats=<path> full=<path>` listing both PDF paths.",
   );
   if (voice) lines.push(voice);
   return lines.join("\n");
